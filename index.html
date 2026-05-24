@@ -1050,8 +1050,15 @@ const GEMS = Object.keys(DATA);
     const wrap = document.createElement('div');
     wrap.className = 'gem-table-wrap';
     let rows = '';
+    let prevAvg = null;
     levels.forEach(([lv, lvd]) => {
       const priceClass = lvd.avg <= 15 ? 'price-low' : lvd.avg >= 500 ? 'price-high' : 'price-mid';
+      let profit = '-';
+      if (prevAvg !== null && prevAvg > 0) {
+        const val = lvd.avg - prevAvg * 3;
+        const cls = val > 0 ? 'price-high' : 'price-low';
+        profit = `<span class="${cls}">${val >= 0 ? "+" : ""}¥${val.toFixed(0)}</span>`;
+      }
       rows += `<tr>
         <td class="lv-cell">${lv} 级</td>
         <td>${lvd.count}</td>
@@ -1059,10 +1066,12 @@ const GEMS = Object.keys(DATA);
         <td class="price-high">¥${lvd.max}</td>
         <td class="${priceClass}">¥${lvd.avg.toFixed(2)}</td>
         <td style="color:var(--text-muted);font-size:11px">${(lvd.count/d.total*100).toFixed(1)}%</td>
+        <td style="font-size:12px">${profit}</td>
       </tr>`;
+      prevAvg = lvd.avg;
     });
     wrap.innerHTML = `<table class="gem-table">
-      <thead><tr><th>等级</th><th>数量</th><th>最低</th><th>最高</th><th>均价</th><th>占比</th></tr></thead>
+      <thead><tr><th>等级</th><th>数量</th><th>最低</th><th>最高</th><th>均价</th><th>占比</th><th>合成盈亏</th></tr></thead>
       <tbody>${rows}</tbody></table>`;
     item.appendChild(header);
     item.appendChild(wrap);
