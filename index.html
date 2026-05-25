@@ -308,11 +308,73 @@ body {
   .gem-header-right { gap: 10px; }
   .gem-lv5-price .price { font-size: 15px; }
 }
+
+@media (max-width: 768px) {
+  .header { padding: 36px 0 28px; }
+  .header h1 { font-size: 26px; }
+  .header .subtitle { font-size: 12px; }
+  .header-badge { font-size: 10px; padding: 4px 12px; }
+  .stat-card { padding: 18px; }
+  .stat-card .stat-value { font-size: 26px; }
+  .stat-card .stat-icon { font-size: 24px; }
+  .stats-grid { gap: 12px; }
+  .section-title { font-size: 17px; margin: 28px 0 14px; }
+  .chart-box { padding: 16px; }
+  .chart-box canvas { max-height: 280px; }
+  .starstone-feature { padding: 20px; }
+  .starstone-feature .ss-title { font-size: 18px; }
+  .starstone-feature .ss-icon { font-size: 28px; }
+  .starstone-feature .ss-subtitle { font-size: 12px; }
+  .gem-header-left { gap: 10px; }
+  .gem-emoji { font-size: 20px; }
+  .gem-name { font-size: 15px; }
+  .gem-meta { font-size: 11px; }
+  .gem-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 12px 16px;
+  }
+  .gem-table { min-width: 540px; }
+  .gem-table th { padding: 8px 8px; font-size: 9px; white-space: nowrap; }
+  .gem-table td { padding: 8px 8px; font-size: 11px; white-space: nowrap; }
+  .footer { padding: 28px 0; }
+  .footer p { font-size: 11px; }
+}
+
 @media (max-width: 500px) {
-  .stats-grid { grid-template-columns: 1fr; }
-  .starstone-feature .ss-grid { grid-template-columns: repeat(2, 1fr); }
+  .stats-grid { grid-template-columns: 1fr; gap: 10px; }
+  .stat-card { padding: 14px 16px; }
+  .stat-card .stat-value { font-size: 24px; }
   .container { padding: 0 12px; }
-  .header { padding: 32px 0 24px; }
+  .header { padding: 28px 0 20px; }
+  .header h1 { font-size: 22px; }
+  .header .date-tag { font-size: 11px; padding: 3px 10px; }
+  .starstone-feature { padding: 16px; margin: 24px 0; }
+  .starstone-feature .ss-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .starstone-feature .ss-header { gap: 8px; margin-bottom: 12px; }
+  .ss-cell { padding: 12px 10px; }
+  .ss-cell .ss-price { font-size: 18px; }
+  .gem-header { flex-wrap: wrap; gap: 6px; padding: 12px 14px; }
+  .gem-header-left { flex: 1 1 100%; }
+  .gem-header-right { width: 100%; justify-content: space-between; }
+  .gem-lv5-price { text-align: left; display: flex; align-items: baseline; gap: 6px; }
+  .gem-lv5-price .label { font-size: 10px; }
+  .gem-lv5-price .price { font-size: 15px; }
+  .gem-arrow { display: none; }
+  .chart-box { padding: 12px; }
+  .chart-box canvas { max-height: 240px; }
+  .section-title { font-size: 15px; }
+  .footer { padding: 20px 0; }
+  .footer p { font-size: 10px; }
+}
+
+@media (max-width: 380px) {
+  .header h1 { font-size: 20px; }
+  .starstone-feature .ss-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .ss-cell .ss-price { font-size: 16px; }
+  .ss-cell .ss-lv { font-size: 10px; }
+  .ss-cell .ss-count { font-size: 10px; }
+  .chart-box canvas { max-height: 200px; }
 }
 </style>
 </head>
