@@ -291,6 +291,9 @@ body {
 .price-mid { color: var(--amber); }
 .price-low { color: var(--emerald); }
 
+/* ── Mobile Buy Strip ── */
+.gem-buy-strip { display: none; }
+
 /* ── DoD Tags ── */
 .dod-tag { font-size: 11px; margin-left: 4px; }
 .dod-up { color: var(--emerald); }
@@ -355,10 +358,34 @@ body {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     padding: 0 10px 16px;
+    position: relative;
+  }
+  .gem-table-wrap::after {
+    content: '';
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    width: 20px;
+    background: linear-gradient(90deg, transparent, rgba(17,24,32,0.85));
+    pointer-events: none;
+    border-radius: 0 0 var(--radius) 0;
   }
   .gem-table { min-width: 620px; }
   .gem-table th { padding: 8px 6px; font-size: 9px; white-space: nowrap; }
   .gem-table td { padding: 8px 6px; font-size: 11px; white-space: nowrap; }
+  .gem-buy-strip {
+    display: flex;
+    align-items: center;
+    gap: 4px 10px;
+    padding: 8px 14px;
+    background: rgba(212,168,83,0.06);
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--gold);
+    flex-wrap: wrap;
+  }
+  .gem-buy-strip .bs-label { font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .gem-buy-strip strong { font-family: 'DM Mono', monospace; color: var(--text-primary); }
+  .gem-buy-strip .bs-note { color: var(--text-muted); font-size: 10px; }
   .rate-bar { padding: 12px; font-size: 11px; gap: 6px 10px; }
   .rate-bar .rate-sep { display: none; }
   .rate-bar .rate-value { flex: 1 1 auto; }
@@ -1325,6 +1352,22 @@ const GEMS = Object.keys(DATA);
       <thead><tr><th>等级</th><th>数量</th><th>最低</th><th>最高</th><th>均价</th><th>占比</th>${hasBuy ? '<th>收购(MH)</th>' : ''}<th>合成盈亏</th></tr></thead>
       <tbody>${rows}</tbody></table>`;
     item.appendChild(header);
+
+    // Mobile buy strip — visible without table scroll
+    if (hasBuy && buyData.levels) {
+      const l1 = buyData.levels['1'];
+      const l5 = buyData.levels['5'];
+      if (l1) {
+        const strip = document.createElement('div');
+        strip.className = 'gem-buy-strip';
+        let html = `<span class="bs-label">建议收购</span> 一级 <strong>${Math.round(l1.buy_mh / 10000)}万</strong> MH`;
+        if (l5) html += ` · 五级 <strong>${Math.round(l5.buy_mh / 10000)}万</strong> MH`;
+        html += ` <span class="bs-note">(已留10%利润)</span>`;
+        strip.innerHTML = html;
+        item.appendChild(strip);
+      }
+    }
+
     item.appendChild(wrap);
     list.appendChild(item);
   });
