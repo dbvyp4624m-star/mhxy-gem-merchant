@@ -34,6 +34,18 @@ GEMS = [
 
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
+# 合成所需1级宝石数量 (来源: hechengguize.xlsx)
+SYNTHESIS = {
+    "_default": {
+        1:1, 2:2, 3:4, 4:8, 5:16, 6:32, 7:64, 8:128, 9:256, 10:512, 11:1024,
+        12:2100, 13:4456, 14:9680, 15:21716, 16:51012, 17:123740,
+        18:312628, 19:821724, 20:2392444
+    },
+    "星辉石": {
+        1:1, 2:3, 3:9, 4:27, 5:81, 6:243, 7:729, 8:2187, 9:6642, 10:20898, 11:69336
+    }
+}
+
 
 def cdp_request(path, method="GET", body=None, timeout=30):
     """发送请求到 CDP Proxy"""
@@ -204,6 +216,98 @@ def scrape_gem(target_id, gem_value, gem_name):
     return all_data
 
 
+def scrape_money_rate(target_id):
+    """抓取梦幻币最低单价，计算 RMB/MH 汇率"""
+    print(f"\n{'='*50}")
+    print(f"  抓取: 梦幻币汇率")
+    print(f"{'='*50}")
+
+    cdp_request(f"/navigate?target={target_id}", method="POST",
+                body="https://xyq.cbg.163.com/cgi-bin/query.py?act=query")
+    time.sleep(2)
+    eval_js(target_id, "search_by_kind(23, 2);")
+    time.sleep(2)
+
+    parse_js = '''(() => {
+        const lines = document.body.innerText.split("\\n");
+        const results = [];
+        for (const line of lines) {
+            const parts = line.trim().split("\\t");
+            const unitIdx = parts.findIndex(p => p.includes("元/万两"));
+            if (unitIdx === -1) continue;
+            const priceIdx = parts.findIndex(p => p.startsWith("￥"));
+            if (priceIdx === -1) continue;
+            const unit = parseFloat(parts[unitIdx]);
+            const price = parseFloat(parts[priceIdx].replace("￥", ""));
+            if (!isNaN(unit) && !isNaN(price)) results.push({unit: unit, price: price});
+        }
+        return JSON.stringify(results);
+    })()'''
+
+    all_units = []
+    for page in range(1, 4):
+        if page > 1:
+            eval_js(target_id, f"goto({page});")
+            time.sleep(2)
+        data_json = eval_js(target_id, parse_js)
+        if data_json:
+            try:
+                items = json.loads(data_json) if isinstance(data_json, str) else data_json
+                units = [i["unit"] for i in items if i.get("unit")]
+                all_units.extend(units)
+                print(f"  第{page}页: {len(items)} 条, 单价范围 {min(units):.4f}-{max(units):.4f}")
+            except json.JSONDecodeError:
+                pass
+
+    if not all_units:
+        print("  梦幻币抓取失败")
+        return None
+
+    all_units.sort()
+    lowest = all_units[:5]
+    avg_unit = round(sum(lowest) / len(lowest), 4)
+    effective = round(avg_unit * 0.93, 4)
+    mh_per_rmb = round(10000 / effective)
+
+    print(f"  最低5单均价: {avg_unit} 元/万两")
+    print(f"  实际汇率(×0.93): {effective} 元/万两")
+    print(f"  1 RMB = {mh_per_rmb} 梦幻币")
+
+    return {"unit_price": avg_unit, "effective_rate": effective, "mh_per_rmb": mh_per_rmb}
+
+
+def compute_suggested_buy(data, rate_info):
+    """计算每种宝石的一级建议收购价(梦幻币)
+    用价格 > 11 的最高等级反推一级等效价，避开 ¥10 地板价失真
+    """
+    if not rate_info:
+        return {}
+    mh_per_rmb = rate_info["mh_per_rmb"]
+
+    suggested = {}
+    for gem_name, gem_data in data.items():
+        synth = SYNTHESIS.get(gem_name, SYNTHESIS["_default"])
+        best_l1_mh = None
+        best_level = None
+        for lv_str, lv_data in sorted(gem_data["levels"].items(), key=lambda x: int(x[0]), reverse=True):
+            lv = int(lv_str)
+            if lv not in synth:
+                continue
+            if lv_data["min"] <= 11:
+                continue
+            l1_rmb = lv_data["min"] / synth[lv]
+            l1_mh = round(l1_rmb * mh_per_rmb)
+            if best_l1_mh is None or l1_mh < best_l1_mh:
+                best_l1_mh = l1_mh
+                best_level = lv
+        if best_l1_mh:
+            suggested[gem_name] = {"l1_mh": best_l1_mh, "ref_level": best_level}
+            print(f"  {gem_name}: 建议收购 {best_l1_mh} MH (参考{best_level}级)")
+        else:
+            suggested[gem_name] = {"l1_mh": 0, "ref_level": 0}
+    return suggested
+
+
 def save_to_csv(all_results, date_str):
     """保存数据到 CSV"""
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -258,9 +362,50 @@ def save_summary(all_results, date_str):
     print(f"汇总已保存至: {filepath}")
 
 
-def regenerate_dashboard(csv_path, date_str):
+def build_history():
+    """从所有历史 CSV 构建时间序列数据"""
+    import glob
+    from collections import defaultdict
+
+    csv_files = sorted(glob.glob(os.path.join(OUTPUT_DIR, "gem_prices_*.csv")))
+    if len(csv_files) < 2:
+        return None
+
+    gem_names = [name for _, name in GEMS]
+    dates = []
+    gem_series = defaultdict(lambda: defaultdict(list))
+
+    for fpath in csv_files:
+        fname = os.path.basename(fpath)
+        date_match = re.search(r"(\d{4}-\d{2}-\d{2})", fname)
+        if not date_match:
+            continue
+        date_str = date_match.group(1)
+        dates.append(date_str)
+
+        with open(fpath, encoding="utf-8") as f:
+            frows = list(csv.DictReader(f))
+
+        gems = defaultdict(lambda: defaultdict(list))
+        for r in frows:
+            gems[r["宝石"]][int(r["等级"])].append(float(r["价格(元)"]))
+
+        for name in gem_names:
+            levels = gems.get(name, {})
+            lv5 = levels.get(5, [])
+            all_prices = [p for ps in levels.values() for p in ps]
+            gem_series[name]["lv5_avg"].append(round(sum(lv5) / len(lv5), 2) if lv5 else 0)
+            gem_series[name]["lv5_min"].append(round(min(lv5), 2) if lv5 else 0)
+            gem_series[name]["lv5_max"].append(round(max(lv5), 2) if lv5 else 0)
+            gem_series[name]["total"].append(len(all_prices))
+
+    return {"dates": dates, "gems": dict(gem_series)}
+
+
+def regenerate_dashboard(csv_path, date_str, rate_info=None, suggested=None):
     """从 CSV 重新生成 dashboard.html"""
     import re
+    import glob
     from collections import defaultdict
 
     with open(csv_path, encoding="utf-8") as f:
@@ -295,6 +440,27 @@ def regenerate_dashboard(csv_path, date_str):
     max_item = max(rows, key=lambda r: float(r["价格(元)"]))
     max_market = max(data.items(), key=lambda x: x[1]["total"])
 
+    # 历史趋势数据
+    history = build_history()
+    js_history = json.dumps(history, ensure_ascii=False) if history else "null"
+
+    # 较昨日变化
+    gem_names = [name for _, name in GEMS]
+    dod_total = 0
+    dod_total_str = "--"
+    dod_max_str = "--"
+    if history and len(history["dates"]) >= 2:
+        yesterday_total = sum(history["gems"][n]["total"][-2] for n in gem_names)
+        dod_total = total - yesterday_total
+        dod_total_str = f"{'+' if dod_total >= 0 else ''}{dod_total}"
+        yesterday_csv = sorted(glob.glob(os.path.join(OUTPUT_DIR, "gem_prices_*.csv")))[-2]
+        with open(yesterday_csv, encoding="utf-8") as f:
+            yrows = list(csv.DictReader(f))
+        if yrows:
+            ymax = max(float(r["价格(元)"]) for r in yrows)
+            dod_max = float(max_item["价格(元)"]) - ymax
+            dod_max_str = f"{'+' if dod_max >= 0 else ''}{dod_max:.0f}"
+
     dashboard_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard.html")
     with open(dashboard_path, "r", encoding="utf-8") as f:
         html = f.read()
@@ -303,22 +469,22 @@ def regenerate_dashboard(csv_path, date_str):
     old_end = html.find("const GEM_EMOJI")
     new_html = html[:old_start] + f"const DATA = {js_data};\n\n" + html[old_end:]
 
+    # 替换 HISTORY / DOD (支持重复运行)
+    new_html = re.sub(r'const HISTORY = \{.*?\};', f'const HISTORY = {js_history};', new_html)
+    dod_obj = {"total": dod_total_str, "max_price": dod_max_str}
+    js_dod = json.dumps(dod_obj, ensure_ascii=False)
+    new_html = re.sub(r'const DOD = \{.*?\};', f'const DOD = {js_dod};', new_html)
+
+    # 替换 RATE / SYNTHESIS / SUGGESTED_BUY
+    if rate_info:
+        js_rate = json.dumps(rate_info, ensure_ascii=False)
+        new_html = re.sub(r'const RATE = \{.*?\};', f'const RATE = {js_rate};', new_html)
+        js_synth = json.dumps(SYNTHESIS, ensure_ascii=False)
+        new_html = re.sub(r'const SYNTHESIS = \{.*?\};', f'const SYNTHESIS = {js_synth};', new_html)
+        js_buy = json.dumps(suggested if suggested else {}, ensure_ascii=False)
+        new_html = re.sub(r'const SUGGESTED_BUY = \{.*?\};', f'const SUGGESTED_BUY = {js_buy};', new_html)
+
     new_html = re.sub(r'<span class="date-tag">[^<]*</span>', f'<span class="date-tag">{date_str}</span>', new_html)
-    new_html = re.sub(
-        r'<div class="stat-value">[\d,]+</div>\s*<div class="stat-detail">再续前缘服务器</div>',
-        f'<div class="stat-value">{total:,}</div>\n      <div class="stat-detail">再续前缘服务器</div>',
-        new_html
-    )
-    new_html = re.sub(
-        r'<div class="stat-value">[^<]+</div>\s*<div class="stat-detail">\d+ 条在售[^<]*</div>',
-        f'<div class="stat-value">{max_market[0]}</div>\n      <div class="stat-detail">{max_market[1]["total"]} 条在售 · {max_market[1]["total"] / total * 100:.1f}%</div>',
-        new_html
-    )
-    new_html = re.sub(
-        r'<div class="stat-value">¥[\d,]+</div>\s*<div class="stat-detail">[^<]+·[^<]+级</div>',
-        f'<div class="stat-value">¥{float(max_item["价格(元)"]):,}</div>\n      <div class="stat-detail">{max_item["宝石"]} · {max_item["等级"]}级</div>',
-        new_html
-    )
     new_html = re.sub(r'共 [\d,]+ 条在售', f'共 {data["星辉石"]["total"]} 条在售', new_html)
 
     with open(dashboard_path, "w", encoding="utf-8") as f:
@@ -390,10 +556,36 @@ def main():
             print(f"  抓取 {gem_name} 失败: {e}")
             all_results.append((gem_name, []))
 
-    # 6. 保存数据
+    # 6. 抓取梦幻币汇率
+    rate_info = scrape_money_rate(target_id)
+
+    # 7. 保存宝石数据并计算建议收购价
+    save_csv_path = os.path.join(OUTPUT_DIR, f"gem_prices_{today}.csv")
     save_to_csv(all_results, today)
     save_summary(all_results, today)
-    regenerate_dashboard(os.path.join(OUTPUT_DIR, f"gem_prices_{today}.csv"), today)
+
+    suggested = None
+    if rate_info:
+        rate_csv = os.path.join(OUTPUT_DIR, "money_rate.csv")
+        rate_exists = os.path.exists(rate_csv)
+        with open(rate_csv, "a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            if not rate_exists:
+                writer.writerow(["日期", "最低单价(元/万两)", "实际汇率(×0.93)", "1RMB=MH"])
+            writer.writerow([today, rate_info["unit_price"], rate_info["effective_rate"], rate_info["mh_per_rmb"]])
+        gem_data = {}
+        for gem_name, items in all_results:
+            lv_map = {}
+            for item in items:
+                lv = str(item["level"])
+                if lv not in lv_map:
+                    lv_map[lv] = []
+                lv_map[lv].append(item["price"])
+            lv_data = {lv: {"min": min(ps), "max": max(ps)} for lv, ps in sorted(lv_map.items(), key=lambda x: int(x[0]))}
+            gem_data[gem_name] = {"levels": lv_data}
+        suggested = compute_suggested_buy(gem_data, rate_info)
+
+    regenerate_dashboard(save_csv_path, today, rate_info, suggested)
     git_push(today)
 
     # 7. 输出总览
