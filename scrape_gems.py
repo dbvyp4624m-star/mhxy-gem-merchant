@@ -98,33 +98,6 @@ def check_login(target_id):
     return "退出" in text and "钱包余额" in text
 
 
-def scrape_gem_page(target_id, page_num):
-    """抓取当前页面的宝石数据"""
-    code = '''(() => {
-        const text = document.body.innerText;
-        const lines = text.split("\\n");
-        const results = [];
-        let currentGem = null;
-        let i = 0;
-        while (i < lines.length) {
-            const line = lines[i].trim();
-            if (!line) { i++; continue; }
-            const levelMatch = line.match(/^(\\d+)级$/);
-            const priceMatch = line.match(/^￥([\\d.]+)$/);
-            if (levelMatch && currentGem && i > 0) {
-                const prevLine = lines[i-1].trim();
-                results.push({ gem: prevLine, level: parseInt(levelMatch[1]) });
-            }
-            if (priceMatch && results.length > 0) {
-                results[results.length-1].price = parseFloat(priceMatch[1]);
-            }
-            i++;
-        }
-        return JSON.stringify(results.filter(r => r.price));
-    })()'''
-    return eval_js(target_id, code)
-
-
 def scrape_gem(target_id, gem_value, gem_name):
     """抓取单个宝石的所有页面数据"""
     print(f"\n{'='*50}")
@@ -277,8 +250,9 @@ def scrape_money_rate(target_id):
 
 
 def compute_suggested_buy(data, rate_info):
-    """计算每种宝石的一级建议收购价(梦幻币)
-    用价格 > 11 的最高等级反推一级等效价，避开 ¥10 地板价失真
+    """计算每种宝石的一级建议收购价(梦幻币)，含10%利润。
+    用价格 > 11 的最高等级反推一级等效价，避开 ¥10 地板价失真。
+    对所有等级计算收购价，标注薄利等级(cost >= 卖价×0.95)。
     """
     if not rate_info:
         return {}
@@ -287,8 +261,9 @@ def compute_suggested_buy(data, rate_info):
     suggested = {}
     for gem_name, gem_data in data.items():
         synth = SYNTHESIS.get(gem_name, SYNTHESIS["_default"])
-        best_l1_mh = None
-        best_level = None
+        # 找可靠等级(价格>11)
+        best_l1_rmb = None
+        ref_level = None
         for lv_str, lv_data in sorted(gem_data["levels"].items(), key=lambda x: int(x[0]), reverse=True):
             lv = int(lv_str)
             if lv not in synth:
@@ -296,15 +271,34 @@ def compute_suggested_buy(data, rate_info):
             if lv_data["min"] <= 11:
                 continue
             l1_rmb = lv_data["min"] / synth[lv]
-            l1_mh = round(l1_rmb * mh_per_rmb)
-            if best_l1_mh is None or l1_mh < best_l1_mh:
-                best_l1_mh = l1_mh
-                best_level = lv
-        if best_l1_mh:
-            suggested[gem_name] = {"l1_mh": best_l1_mh, "ref_level": best_level}
-            print(f"  {gem_name}: 建议收购 {best_l1_mh} MH (参考{best_level}级)")
-        else:
-            suggested[gem_name] = {"l1_mh": 0, "ref_level": 0}
+            if best_l1_rmb is None or l1_rmb < best_l1_rmb:
+                best_l1_rmb = l1_rmb
+                ref_level = lv
+
+        if best_l1_rmb is None:
+            suggested[gem_name] = {"l1_mh": 0, "ref_level": 0, "levels": {}}
+            continue
+
+        l1_mh = round(best_l1_rmb * mh_per_rmb * 0.9)  # 留10%利润
+        levels_out = {}
+        has_cbg = gem_data.get("levels", {})
+
+        for lv in range(1, max(synth.keys()) + 1):
+            if lv not in synth:
+                continue
+            buy_mh = round(l1_mh * synth[lv])
+            lv_entry = {"buy_mh": buy_mh, "flag": False}
+            lv_str = str(lv)
+            if lv_str in has_cbg and has_cbg[lv_str]["min"] > 11:
+                sell_price = has_cbg[lv_str]["min"]
+                cost_rmb = buy_mh / mh_per_rmb
+                if cost_rmb >= sell_price * 0.95:
+                    lv_entry["flag"] = True
+            levels_out[lv_str] = lv_entry
+
+        suggested[gem_name] = {"l1_mh": l1_mh, "ref_level": ref_level, "levels": levels_out}
+        print(f"  {gem_name}: 建议收购 {l1_mh} MH/级 (参考{ref_level}级, 已留10%利润)")
+
     return suggested
 
 
@@ -404,12 +398,15 @@ def build_history():
 
 def regenerate_dashboard(csv_path, date_str, rate_info=None, suggested=None):
     """从 CSV 重新生成 dashboard.html"""
-    import re
     import glob
     from collections import defaultdict
 
     with open(csv_path, encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
+
+    if not rows:
+        print("  无数据，跳过仪表盘更新")
+        return
 
     gems = defaultdict(lambda: defaultdict(list))
     for r in rows:
@@ -460,6 +457,8 @@ def regenerate_dashboard(csv_path, date_str, rate_info=None, suggested=None):
             ymax = max(float(r["价格(元)"]) for r in yrows)
             dod_max = float(max_item["价格(元)"]) - ymax
             dod_max_str = f"{'+' if dod_max >= 0 else ''}{dod_max:.0f}"
+        else:
+            dod_max_str = "--"
 
     dashboard_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard.html")
     with open(dashboard_path, "r", encoding="utf-8") as f:
@@ -485,7 +484,8 @@ def regenerate_dashboard(csv_path, date_str, rate_info=None, suggested=None):
         new_html = re.sub(r'const SUGGESTED_BUY = \{.*?\};', f'const SUGGESTED_BUY = {js_buy};', new_html)
 
     new_html = re.sub(r'<span class="date-tag">[^<]*</span>', f'<span class="date-tag">{date_str}</span>', new_html)
-    new_html = re.sub(r'共 [\d,]+ 条在售', f'共 {data["星辉石"]["total"]} 条在售', new_html)
+    starstone_total = data.get("星辉石", {}).get("total", 0)
+    new_html = re.sub(r'共 [\d,]+ 条在售', f'共 {starstone_total} 条在售', new_html)
 
     with open(dashboard_path, "w", encoding="utf-8") as f:
         f.write(new_html)
@@ -541,7 +541,6 @@ def main():
     current_url = eval_js(target_id, "document.location.href")
     if "act=search_role_equip" not in str(current_url):
         print("导航到道具搜索页面...")
-        eval_js(target_id, "")
         cdp_request(f"/navigate?target={target_id}", method="POST",
                     body="https://xyq.cbg.163.com/cgi-bin/query.py?act=search_role_equip")
         time.sleep(3)
@@ -567,12 +566,17 @@ def main():
     suggested = None
     if rate_info:
         rate_csv = os.path.join(OUTPUT_DIR, "money_rate.csv")
-        rate_exists = os.path.exists(rate_csv)
-        with open(rate_csv, "a", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            if not rate_exists:
-                writer.writerow(["日期", "最低单价(元/万两)", "实际汇率(×0.93)", "1RMB=MH"])
-            writer.writerow([today, rate_info["unit_price"], rate_info["effective_rate"], rate_info["mh_per_rmb"]])
+        existing_rows = []
+        if os.path.exists(rate_csv):
+            with open(rate_csv, encoding="utf-8") as f:
+                existing_rows = list(csv.reader(f))
+        new_rows = [existing_rows[0]] if existing_rows and existing_rows[0][0] == "日期" else [["日期", "最低单价(元/万两)", "实际汇率(×0.93)", "1RMB=MH"]]
+        for row in existing_rows[1:]:
+            if row and row[0] != today:
+                new_rows.append(row)
+        new_rows.append([today, rate_info["unit_price"], rate_info["effective_rate"], rate_info["mh_per_rmb"]])
+        with open(rate_csv, "w", newline="", encoding="utf-8") as f:
+            csv.writer(f).writerows(new_rows)
         gem_data = {}
         for gem_name, items in all_results:
             lv_map = {}
