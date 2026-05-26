@@ -185,59 +185,6 @@ body {
 .chart-box:hover { border-color: var(--border-light); box-shadow: var(--shadow); }
 .chart-box canvas { max-height: 360px; }
 
-/* ── Starstone Highlight ── */
-.starstone-feature {
-  background: linear-gradient(135deg, rgba(212,168,83,0.08) 0%, rgba(212,168,83,0.02) 50%, rgba(212,168,83,0.08) 100%);
-  border: 1px solid var(--gold-dim);
-  border-radius: var(--radius-lg);
-  padding: 28px 32px;
-  margin: 32px 0;
-  position: relative;
-  overflow: hidden;
-  animation: glowPulse 3s ease-in-out infinite;
-}
-@keyframes glowPulse {
-  0%, 100% { box-shadow: 0 0 20px rgba(212,168,83,0.08), inset 0 0 20px rgba(212,168,83,0.02); }
-  50% { box-shadow: 0 0 40px rgba(212,168,83,0.15), inset 0 0 30px rgba(212,168,83,0.04); }
-}
-.starstone-feature .ss-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-.starstone-feature .ss-icon {
-  font-size: 36px;
-  filter: drop-shadow(0 0 8px rgba(212,168,83,0.5));
-  animation: iconFloat 2s ease-in-out infinite;
-}
-@keyframes iconFloat {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
-}
-.starstone-feature .ss-title {
-  font-family: 'Noto Serif SC', serif;
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--gold);
-}
-.starstone-feature .ss-subtitle { color: var(--text-secondary); font-size: 13px; }
-.starstone-feature .ss-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
-}
-.ss-cell {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 16px;
-  text-align: center;
-}
-.ss-cell .ss-lv { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; }
-.ss-cell .ss-price { font-family: 'DM Mono', monospace; font-size: 22px; font-weight: 500; color: var(--gold); margin: 4px 0; }
-.ss-cell .ss-count { font-size: 11px; color: var(--text-secondary); }
-
 /* ── Gem Tables ── */
 .gem-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 48px; }
 .gem-item { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: all var(--transition); }
@@ -321,10 +268,6 @@ body {
   .section-title { font-size: 17px; margin: 28px 0 14px; }
   .chart-box { padding: 16px; }
   .chart-box canvas { max-height: 280px; }
-  .starstone-feature { padding: 20px; }
-  .starstone-feature .ss-title { font-size: 18px; }
-  .starstone-feature .ss-icon { font-size: 28px; }
-  .starstone-feature .ss-subtitle { font-size: 12px; }
   .gem-header-left { gap: 10px; }
   .gem-emoji { font-size: 20px; }
   .gem-name { font-size: 15px; }
@@ -359,11 +302,6 @@ body {
   .header { padding: 28px 0 20px; }
   .header h1 { font-size: 22px; }
   .header .date-tag { font-size: 11px; padding: 3px 10px; }
-  .starstone-feature { padding: 16px; margin: 24px 0; }
-  .starstone-feature .ss-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  .starstone-feature .ss-header { gap: 8px; margin-bottom: 12px; }
-  .ss-cell { padding: 12px 10px; }
-  .ss-cell .ss-price { font-size: 18px; }
   .gem-header { flex-wrap: wrap; gap: 6px; padding: 12px 14px; }
   .gem-header-left { flex: 1 1 100%; }
   .gem-header-right { width: 100%; justify-content: space-between; }
@@ -380,10 +318,6 @@ body {
 
 @media (max-width: 380px) {
   .header h1 { font-size: 20px; }
-  .starstone-feature .ss-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
-  .ss-cell .ss-price { font-size: 16px; }
-  .ss-cell .ss-lv { font-size: 10px; }
-  .ss-cell .ss-count { font-size: 10px; }
   .chart-box canvas { max-height: 200px; }
 }
 </style>
@@ -427,18 +361,6 @@ body {
       <div class="stat-value">¥26,999.0</div>
       <div class="stat-detail">星辉石 · 10级</div>
     </div>
-  </div>
-
-  <!-- Starstone Highlight -->
-  <div class="starstone-feature">
-    <div class="ss-header">
-      <span class="ss-icon">&#x2B50;</span>
-      <div>
-        <div class="ss-title">星辉石 — 价格之王</div>
-        <div class="ss-subtitle">全服最贵宝石 · 5级均价 ¥100.44 · 共 74 条在售</div>
-      </div>
-    </div>
-    <div class="ss-grid" id="starstone-grid"></div>
   </div>
 
   <!-- Charts -->
@@ -1005,18 +927,6 @@ const DATA = {
 
 const GEM_EMOJI = { '太阳石': '☀️', '月亮石': '🌙', '光芒石': '💡', '黑宝石': '🖤', '红玛瑙': '🔴', '舍利子': '🟣', '星辉石': '⭐', '翡翠石': '💚' };
 const GEMS = Object.keys(DATA);
-
-// ── Starstone Feature ──
-(function() {
-  const ss = DATA['星辉石'].levels;
-  const grid = document.getElementById('starstone-grid');
-  Object.entries(ss).forEach(([lv, d]) => {
-    const cell = document.createElement('div');
-    cell.className = 'ss-cell';
-    cell.innerHTML = `<div class="ss-lv">${lv} 级</div><div class="ss-price">¥${d.avg.toLocaleString()}</div><div class="ss-count">${d.count} 条 · ¥${d.min}~¥${d.max}</div>`;
-    grid.appendChild(cell);
-  });
-})();
 
 // ── Charts ──
 (function() {

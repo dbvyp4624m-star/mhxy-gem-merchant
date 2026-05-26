@@ -185,58 +185,51 @@ body {
 .chart-box:hover { border-color: var(--border-light); box-shadow: var(--shadow); }
 .chart-box canvas { max-height: 360px; }
 
-/* ── Starstone Highlight ── */
-.starstone-feature {
-  background: linear-gradient(135deg, rgba(212,168,83,0.08) 0%, rgba(212,168,83,0.02) 50%, rgba(212,168,83,0.08) 100%);
-  border: 1px solid var(--gold-dim);
-  border-radius: var(--radius-lg);
-  padding: 28px 32px;
-  margin: 32px 0;
-  position: relative;
-  overflow: hidden;
-  animation: glowPulse 3s ease-in-out infinite;
-}
-@keyframes glowPulse {
-  0%, 100% { box-shadow: 0 0 20px rgba(212,168,83,0.08), inset 0 0 20px rgba(212,168,83,0.02); }
-  50% { box-shadow: 0 0 40px rgba(212,168,83,0.15), inset 0 0 30px rgba(212,168,83,0.04); }
-}
-.starstone-feature .ss-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-.starstone-feature .ss-icon {
-  font-size: 36px;
-  filter: drop-shadow(0 0 8px rgba(212,168,83,0.5));
-  animation: iconFloat 2s ease-in-out infinite;
-}
-@keyframes iconFloat {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
-}
-.starstone-feature .ss-title {
-  font-family: 'Noto Serif SC', serif;
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--gold);
-}
-.starstone-feature .ss-subtitle { color: var(--text-secondary); font-size: 13px; }
-.starstone-feature .ss-grid {
+/* ── Buy Suggestion Module ── */
+.buy-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
+  margin-bottom: 28px;
 }
-.ss-cell {
+.buy-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 16px;
+  border-radius: var(--radius);
+  padding: 18px 16px;
   text-align: center;
+  transition: var(--transition);
 }
-.ss-cell .ss-lv { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; }
-.ss-cell .ss-price { font-family: 'DM Mono', monospace; font-size: 22px; font-weight: 500; color: var(--gold); margin: 4px 0; }
-.ss-cell .ss-count { font-size: 11px; color: var(--text-secondary); }
+.buy-card:hover { border-color: var(--gold-dim); }
+.buy-card .bc-gem { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.buy-card .bc-emoji { font-size: 22px; margin-bottom: 4px; }
+.buy-card .bc-price {
+  font-family: 'DM Mono', monospace;
+  font-size: 20px; font-weight: 500; color: var(--gold);
+  margin: 6px 0 2px;
+}
+.buy-card .bc-meta { font-size: 11px; color: var(--text-muted); }
+.buy-card .bc-delta { font-size: 12px; margin-top: 4px; }
+.buy-card .bc-delta.up { color: var(--ruby); }
+.buy-card .bc-delta.down { color: var(--emerald); }
+.buy-card .bc-delta.flat { color: var(--text-muted); }
+.buy-card.flag-thin { border-color: rgba(231,76,60,0.3); }
+
+.buy-advice-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 32px; }
+.buy-advice-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px; border-radius: var(--radius-sm);
+  background: var(--bg-card); border: 1px solid var(--border);
+}
+.buy-advice-item .ba-action {
+  font-weight: 700; font-size: 13px; white-space: nowrap;
+  padding: 4px 10px; border-radius: 4px;
+}
+.buy-advice-item .ba-action.buy { background: rgba(46,204,113,0.15); color: var(--emerald); }
+.buy-advice-item .ba-action.hold { background: rgba(243,156,18,0.15); color: var(--amber); }
+.buy-advice-item .ba-action.skip { background: rgba(231,76,60,0.15); color: var(--ruby); }
+.buy-advice-item .ba-gem { font-weight: 600; }
+.buy-advice-item .ba-reason { font-size: 12px; color: var(--text-secondary); }
 
 /* ── Gem Tables ── */
 .gem-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 48px; }
@@ -346,10 +339,6 @@ body {
   .section-title { font-size: 17px; margin: 28px 0 14px; }
   .chart-box { padding: 16px; }
   .chart-box canvas { max-height: 280px; }
-  .starstone-feature { padding: 20px; }
-  .starstone-feature .ss-title { font-size: 18px; }
-  .starstone-feature .ss-icon { font-size: 28px; }
-  .starstone-feature .ss-subtitle { font-size: 12px; margin-top: 2px; }
   .gem-header-left { gap: 10px; }
   .gem-emoji { font-size: 20px; }
   .gem-name { font-size: 15px; }
@@ -401,11 +390,6 @@ body {
   .header { padding: 28px 0 20px; }
   .header h1 { font-size: 22px; }
   .header .date-tag { font-size: 11px; padding: 3px 10px; }
-  .starstone-feature { padding: 16px; margin: 24px 0; }
-  .starstone-feature .ss-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  .starstone-feature .ss-header { gap: 8px; margin-bottom: 12px; }
-  .ss-cell { padding: 12px 10px; }
-  .ss-cell .ss-price { font-size: 18px; }
   .rate-bar { flex-direction: column; gap: 4px; padding: 10px 14px; font-size: 11px; }
   .rate-bar .rate-value { font-size: 11px; }
   .gem-header { flex-wrap: wrap; gap: 6px; padding: 12px 14px; }
@@ -424,10 +408,6 @@ body {
 
 @media (max-width: 380px) {
   .header h1 { font-size: 20px; }
-  .starstone-feature .ss-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
-  .ss-cell .ss-price { font-size: 16px; }
-  .ss-cell .ss-lv { font-size: 10px; }
-  .ss-cell .ss-count { font-size: 10px; }
   .chart-box canvas { max-height: 200px; }
   .rate-bar { padding: 8px 10px; font-size: 10px; }
 }
@@ -484,17 +464,15 @@ body {
     <span class="rate-value">实际汇率(×0.93) <strong id="rate-eff">--</strong> 元/万两</span>
   </div>
 
-  <!-- Starstone Highlight -->
-  <div class="starstone-feature">
-    <div class="ss-header">
-      <span class="ss-icon">&#x2B50;</span>
-      <div>
-        <div class="ss-title">星辉石 — 价格之王</div>
-        <div class="ss-subtitle">全服最贵宝石 · 5级均价 ¥100.44 · 共 84 条在售</div>
-      </div>
-    </div>
-    <div class="ss-grid" id="starstone-grid"></div>
-  </div>
+  <!-- Buy Suggestion Module -->
+  <div class="section-title">建议收购价</div>
+  <div class="buy-grid" id="buy-grid"></div>
+
+  <div class="section-title">收购价趋势</div>
+  <div class="chart-box"><canvas id="chartBuyTrend"></canvas></div>
+
+  <div class="section-title">收购建议</div>
+  <div class="buy-advice-list" id="buy-advice-list"></div>
 
   <!-- Charts -->
   <div class="section-title">价格总览</div>
@@ -521,466 +499,6 @@ body {
 
 <script>
 const DATA = {
-  "太阳石": {
-    "total": 199,
-    "lv5_avg": 10.2,
-    "lv5_min": 10.0,
-    "lv5_max": 13.0,
-    "level_range": "5-14",
-    "max_price": 5999.0,
-    "levels": {
-      "5": {
-        "count": 51,
-        "min": 10.0,
-        "max": 13.0,
-        "avg": 10.2
-      },
-      "6": {
-        "count": 51,
-        "min": 17.22,
-        "max": 22.0,
-        "avg": 18.25
-      },
-      "7": {
-        "count": 13,
-        "min": 34.99,
-        "max": 66.88,
-        "avg": 40.23
-      },
-      "8": {
-        "count": 23,
-        "min": 69.0,
-        "max": 100.0,
-        "avg": 75.15
-      },
-      "9": {
-        "count": 25,
-        "min": 145.99,
-        "max": 160.0,
-        "avg": 149.89
-      },
-      "10": {
-        "count": 16,
-        "min": 285.0,
-        "max": 333.0,
-        "avg": 302.67
-      },
-      "11": {
-        "count": 13,
-        "min": 587.98,
-        "max": 611.0,
-        "avg": 595.69
-      },
-      "12": {
-        "count": 3,
-        "min": 1335.0,
-        "max": 1350.0,
-        "avg": 1341.67
-      },
-      "13": {
-        "count": 3,
-        "min": 2798.0,
-        "max": 2799.0,
-        "avg": 2798.67
-      },
-      "14": {
-        "count": 1,
-        "min": 5999.0,
-        "max": 5999.0,
-        "avg": 5999.0
-      }
-    }
-  },
-  "月亮石": {
-    "total": 235,
-    "lv5_avg": 10.12,
-    "lv5_min": 10.0,
-    "lv5_max": 11.99,
-    "level_range": "5-14",
-    "max_price": 5499.0,
-    "levels": {
-      "5": {
-        "count": 98,
-        "min": 10.0,
-        "max": 11.99,
-        "avg": 10.12
-      },
-      "6": {
-        "count": 28,
-        "min": 13.88,
-        "max": 19.0,
-        "avg": 14.87
-      },
-      "7": {
-        "count": 30,
-        "min": 27.98,
-        "max": 40.0,
-        "avg": 30.52
-      },
-      "8": {
-        "count": 24,
-        "min": 57.0,
-        "max": 81.0,
-        "avg": 64.3
-      },
-      "9": {
-        "count": 12,
-        "min": 112.0,
-        "max": 200.0,
-        "avg": 129.91
-      },
-      "10": {
-        "count": 22,
-        "min": 238.85,
-        "max": 299.0,
-        "avg": 251.24
-      },
-      "11": {
-        "count": 12,
-        "min": 478.9,
-        "max": 580.0,
-        "avg": 505.8
-      },
-      "12": {
-        "count": 5,
-        "min": 1082.0,
-        "max": 1124.8,
-        "avg": 1112.96
-      },
-      "13": {
-        "count": 3,
-        "min": 2326.0,
-        "max": 2330.0,
-        "avg": 2327.67
-      },
-      "14": {
-        "count": 1,
-        "min": 5499.0,
-        "max": 5499.0,
-        "avg": 5499.0
-      }
-    }
-  },
-  "光芒石": {
-    "total": 279,
-    "lv5_avg": 10.01,
-    "lv5_min": 10.0,
-    "lv5_max": 11.0,
-    "level_range": "5-15",
-    "max_price": 5799.0,
-    "levels": {
-      "5": {
-        "count": 85,
-        "min": 10.0,
-        "max": 11.0,
-        "avg": 10.01
-      },
-      "6": {
-        "count": 30,
-        "min": 10.0,
-        "max": 10.5,
-        "avg": 10.02
-      },
-      "7": {
-        "count": 45,
-        "min": 14.0,
-        "max": 19.0,
-        "avg": 16.08
-      },
-      "8": {
-        "count": 47,
-        "min": 28.88,
-        "max": 70.0,
-        "avg": 32.93
-      },
-      "9": {
-        "count": 23,
-        "min": 60.0,
-        "max": 135.0,
-        "avg": 71.6
-      },
-      "10": {
-        "count": 29,
-        "min": 119.0,
-        "max": 288.0,
-        "avg": 155.63
-      },
-      "11": {
-        "count": 7,
-        "min": 252.88,
-        "max": 466.0,
-        "avg": 341.13
-      },
-      "12": {
-        "count": 9,
-        "min": 525.98,
-        "max": 600.0,
-        "avg": 556.55
-      },
-      "13": {
-        "count": 3,
-        "min": 1100.0,
-        "max": 1145.0,
-        "avg": 1115.0
-      },
-      "15": {
-        "count": 1,
-        "min": 5799.0,
-        "max": 5799.0,
-        "avg": 5799.0
-      }
-    }
-  },
-  "黑宝石": {
-    "total": 91,
-    "lv5_avg": 20.85,
-    "lv5_min": 19.99,
-    "lv5_max": 21.98,
-    "level_range": "5-14",
-    "max_price": 13999.0,
-    "levels": {
-      "5": {
-        "count": 28,
-        "min": 19.99,
-        "max": 21.98,
-        "avg": 20.85
-      },
-      "6": {
-        "count": 6,
-        "min": 41.0,
-        "max": 43.0,
-        "avg": 41.5
-      },
-      "7": {
-        "count": 11,
-        "min": 81.0,
-        "max": 158.88,
-        "avg": 91.27
-      },
-      "8": {
-        "count": 10,
-        "min": 163.0,
-        "max": 176.0,
-        "avg": 167.17
-      },
-      "9": {
-        "count": 21,
-        "min": 339.0,
-        "max": 360.0,
-        "avg": 350.57
-      },
-      "10": {
-        "count": 6,
-        "min": 690.0,
-        "max": 730.0,
-        "avg": 709.29
-      },
-      "11": {
-        "count": 3,
-        "min": 1495.0,
-        "max": 1499.0,
-        "avg": 1497.0
-      },
-      "12": {
-        "count": 3,
-        "min": 3042.0,
-        "max": 3045.0,
-        "avg": 3043.33
-      },
-      "13": {
-        "count": 2,
-        "min": 6750.0,
-        "max": 6799.0,
-        "avg": 6774.5
-      },
-      "14": {
-        "count": 1,
-        "min": 13999.0,
-        "max": 13999.0,
-        "avg": 13999.0
-      }
-    }
-  },
-  "红玛瑙": {
-    "total": 269,
-    "lv5_avg": 10.63,
-    "lv5_min": 10.0,
-    "lv5_max": 13.0,
-    "level_range": "5-15",
-    "max_price": 15999.0,
-    "levels": {
-      "5": {
-        "count": 67,
-        "min": 10.0,
-        "max": 13.0,
-        "avg": 10.63
-      },
-      "6": {
-        "count": 53,
-        "min": 18.76,
-        "max": 22.0,
-        "avg": 19.25
-      },
-      "7": {
-        "count": 54,
-        "min": 38.55,
-        "max": 72.88,
-        "avg": 42.09
-      },
-      "8": {
-        "count": 30,
-        "min": 77.9,
-        "max": 88.0,
-        "avg": 80.92
-      },
-      "9": {
-        "count": 14,
-        "min": 166.8,
-        "max": 195.0,
-        "avg": 172.56
-      },
-      "10": {
-        "count": 36,
-        "min": 324.85,
-        "max": 425.0,
-        "avg": 342.58
-      },
-      "11": {
-        "count": 6,
-        "min": 673.98,
-        "max": 685.0,
-        "avg": 679.79
-      },
-      "12": {
-        "count": 5,
-        "min": 1406.0,
-        "max": 1488.0,
-        "avg": 1428.2
-      },
-      "13": {
-        "count": 2,
-        "min": 3139.0,
-        "max": 3139.9,
-        "avg": 3139.45
-      },
-      "14": {
-        "count": 1,
-        "min": 7199.0,
-        "max": 7199.0,
-        "avg": 7199.0
-      },
-      "15": {
-        "count": 1,
-        "min": 15999.0,
-        "max": 15999.0,
-        "avg": 15999.0
-      }
-    }
-  },
-  "舍利子": {
-    "total": 158,
-    "lv5_avg": 12.72,
-    "lv5_min": 11.99,
-    "lv5_max": 15.0,
-    "level_range": "5-13",
-    "max_price": 3799.0,
-    "levels": {
-      "5": {
-        "count": 39,
-        "min": 11.99,
-        "max": 15.0,
-        "avg": 12.72
-      },
-      "6": {
-        "count": 17,
-        "min": 24.8,
-        "max": 26.0,
-        "avg": 25.35
-      },
-      "7": {
-        "count": 29,
-        "min": 48.5,
-        "max": 57.0,
-        "avg": 51.34
-      },
-      "8": {
-        "count": 22,
-        "min": 97.0,
-        "max": 110.0,
-        "avg": 100.55
-      },
-      "9": {
-        "count": 17,
-        "min": 209.87,
-        "max": 288.0,
-        "avg": 217.37
-      },
-      "10": {
-        "count": 26,
-        "min": 417.88,
-        "max": 444.0,
-        "avg": 426.91
-      },
-      "11": {
-        "count": 1,
-        "min": 830.0,
-        "max": 830.0,
-        "avg": 830.0
-      },
-      "12": {
-        "count": 3,
-        "min": 1677.0,
-        "max": 1799.0,
-        "avg": 1734.67
-      },
-      "13": {
-        "count": 4,
-        "min": 3798.0,
-        "max": 3799.0,
-        "avg": 3798.75
-      }
-    }
-  },
-  "星辉石": {
-    "total": 84,
-    "lv5_avg": 99.51,
-    "lv5_min": 94.0,
-    "lv5_max": 105.0,
-    "level_range": "5-9",
-    "max_price": 8650.0,
-    "levels": {
-      "5": {
-        "count": 40,
-        "min": 94.0,
-        "max": 105.0,
-        "avg": 99.51
-      },
-      "6": {
-        "count": 28,
-        "min": 293.0,
-        "max": 333.0,
-        "avg": 301.34
-      },
-      "7": {
-        "count": 9,
-        "min": 906.0,
-        "max": 930.0,
-        "avg": 918.33
-      },
-      "8": {
-        "count": 5,
-        "min": 2750.0,
-        "max": 2900.0,
-        "avg": 2800.8
-      },
-      "9": {
-        "count": 2,
-        "min": 8600.0,
-        "max": 8650.0,
-        "avg": 8625.0
-      }
-    }
-  },
   "翡翠石": {
     "total": 156,
     "lv5_avg": 10.0,
@@ -1023,7 +541,7 @@ const DATA = {
         "count": 13,
         "min": 87.0,
         "max": 100.0,
-        "avg": 89.62
+        "avg": 91.32
       },
       "11": {
         "count": 12,
@@ -1060,22 +578,129 @@ const DATA = {
 };
 
 const GEM_EMOJI = { '太阳石': '☀️', '月亮石': '🌙', '光芒石': '💡', '黑宝石': '🖤', '红玛瑙': '🔴', '舍利子': '🟣', '星辉石': '⭐', '翡翠石': '💚' };
-const HISTORY = {"dates": ["2026-05-24", "2026-05-25", "2026-05-26"], "gems": {"太阳石": {"lv5_avg": [10.19, 10.17, 10.2], "lv5_min": [10.0, 10.0, 10.0], "lv5_max": [11.99, 13.0, 13.0], "total": [150, 208, 199]}, "月亮石": {"lv5_avg": [10.18, 10.11, 10.12], "lv5_min": [10.0, 10.0, 10.0], "lv5_max": [13.0, 13.0, 11.99], "total": [150, 225, 235]}, "光芒石": {"lv5_avg": [10.02, 10.01, 10.01], "lv5_min": [10.0, 10.0, 10.0], "lv5_max": [11.0, 11.0, 11.0], "total": [460, 601, 279]}, "黑宝石": {"lv5_avg": [21.03, 20.97, 20.85], "lv5_min": [20.55, 20.0, 19.99], "lv5_max": [21.98, 21.98, 21.98], "total": [78, 96, 91]}, "红玛瑙": {"lv5_avg": [10.6, 10.58, 10.63], "lv5_min": [10.0, 10.0, 10.0], "lv5_max": [14.0, 14.0, 13.0], "total": [150, 272, 269]}, "舍利子": {"lv5_avg": [12.68, 12.66, 12.72], "lv5_min": [11.99, 12.0, 11.99], "lv5_max": [15.0, 15.0, 15.0], "total": [139, 156, 158]}, "星辉石": {"lv5_avg": [100.44, 99.98, 99.51], "lv5_min": [97.77, 96.0, 94.0], "lv5_max": [105.0, 105.0, 105.0], "total": [74, 82, 84]}, "翡翠石": {"lv5_avg": [10.0, 10.0, 10.0], "lv5_min": [10.0, 10.0, 10.0], "lv5_max": [10.0, 10.0, 10.0], "total": [141, 143, 156]}}};
-const DOD = {"total": "-312", "max_price": "+0"};
+const HISTORY = {"dates": ["2026-05-24", "2026-05-25", "2026-05-26"], "gems": {"太阳石": {"lv5_avg": [10.19, 10.17, 0], "lv5_min": [10.0, 10.0, 0], "lv5_max": [11.99, 13.0, 0], "total": [150, 208, 0]}, "月亮石": {"lv5_avg": [10.18, 10.11, 0], "lv5_min": [10.0, 10.0, 0], "lv5_max": [13.0, 13.0, 0], "total": [150, 225, 0]}, "光芒石": {"lv5_avg": [10.02, 10.01, 0], "lv5_min": [10.0, 10.0, 0], "lv5_max": [11.0, 11.0, 0], "total": [460, 601, 0]}, "黑宝石": {"lv5_avg": [21.03, 20.97, 0], "lv5_min": [20.55, 20.0, 0], "lv5_max": [21.98, 21.98, 0], "total": [78, 96, 0]}, "红玛瑙": {"lv5_avg": [10.6, 10.58, 0], "lv5_min": [10.0, 10.0, 0], "lv5_max": [14.0, 14.0, 0], "total": [150, 272, 0]}, "舍利子": {"lv5_avg": [12.68, 12.66, 0], "lv5_min": [11.99, 12.0, 0], "lv5_max": [15.0, 15.0, 0], "total": [139, 156, 0]}, "星辉石": {"lv5_avg": [100.44, 99.98, 0], "lv5_min": [97.77, 96.0, 0], "lv5_max": [105.0, 105.0, 0], "total": [74, 82, 0]}, "翡翠石": {"lv5_avg": [10.0, 10.0, 10.0], "lv5_min": [10.0, 10.0, 10.0], "lv5_max": [10.0, 10.0, 10.0], "total": [141, 143, 156]}}};
+const DOD = {"total": "-1627", "max_price": "-11333"};
 const RATE = {"unit_price": 0.0763, "effective_rate": 0.071, "mh_per_rmb": 140845};
 const SYNTHESIS = {"_default": {"1": 1, "2": 2, "3": 4, "4": 8, "5": 16, "6": 32, "7": 64, "8": 128, "9": 256, "10": 512, "11": 1024, "12": 2100, "13": 4456, "14": 9680, "15": 21716, "16": 51012, "17": 123740, "18": 312628, "19": 821724, "20": 2392444}, "星辉石": {"1": 1, "2": 3, "3": 9, "4": 27, "5": 81, "6": 243, "7": 729, "8": 2187, "9": 6642, "10": 20898, "11": 69336}};
-const SUGGESTED_BUY = {"太阳石": {"l1_mh": 68213, "ref_level": 6, "levels": {"1": {"buy_mh": 68213, "flag": false}, "2": {"buy_mh": 136426, "flag": false}, "3": {"buy_mh": 272852, "flag": false}, "4": {"buy_mh": 545704, "flag": false}, "5": {"buy_mh": 1091408, "flag": false}, "6": {"buy_mh": 2182816, "flag": false}, "7": {"buy_mh": 4365632, "flag": false}, "8": {"buy_mh": 8731264, "flag": false}, "9": {"buy_mh": 17462528, "flag": false}, "10": {"buy_mh": 34925056, "flag": false}, "11": {"buy_mh": 69850112, "flag": false}, "12": {"buy_mh": 143247300, "flag": false}, "13": {"buy_mh": 303957128, "flag": false}, "14": {"buy_mh": 660301840, "flag": false}, "15": {"buy_mh": 1481313508, "flag": false}, "16": {"buy_mh": 3479681556, "flag": false}, "17": {"buy_mh": 8440676620, "flag": false}, "18": {"buy_mh": 21325293764, "flag": false}, "19": {"buy_mh": 56052259212, "flag": false}, "20": {"buy_mh": 163195782572, "flag": false}}}, "月亮石": {"l1_mh": 54982, "ref_level": 6, "levels": {"1": {"buy_mh": 54982, "flag": false}, "2": {"buy_mh": 109964, "flag": false}, "3": {"buy_mh": 219928, "flag": false}, "4": {"buy_mh": 439856, "flag": false}, "5": {"buy_mh": 879712, "flag": false}, "6": {"buy_mh": 1759424, "flag": false}, "7": {"buy_mh": 3518848, "flag": false}, "8": {"buy_mh": 7037696, "flag": false}, "9": {"buy_mh": 14075392, "flag": false}, "10": {"buy_mh": 28150784, "flag": false}, "11": {"buy_mh": 56301568, "flag": false}, "12": {"buy_mh": 115462200, "flag": false}, "13": {"buy_mh": 244999792, "flag": false}, "14": {"buy_mh": 532225760, "flag": false}, "15": {"buy_mh": 1193989112, "flag": false}, "16": {"buy_mh": 2804741784, "flag": false}, "17": {"buy_mh": 6803472680, "flag": false}, "18": {"buy_mh": 17188912696, "flag": false}, "19": {"buy_mh": 45180028968, "flag": false}, "20": {"buy_mh": 131541356008, "flag": false}}}, "光芒石": {"l1_mh": 27729, "ref_level": 7, "levels": {"1": {"buy_mh": 27729, "flag": false}, "2": {"buy_mh": 55458, "flag": false}, "3": {"buy_mh": 110916, "flag": false}, "4": {"buy_mh": 221832, "flag": false}, "5": {"buy_mh": 443664, "flag": false}, "6": {"buy_mh": 887328, "flag": false}, "7": {"buy_mh": 1774656, "flag": false}, "8": {"buy_mh": 3549312, "flag": false}, "9": {"buy_mh": 7098624, "flag": false}, "10": {"buy_mh": 14197248, "flag": false}, "11": {"buy_mh": 28394496, "flag": false}, "12": {"buy_mh": 58230900, "flag": false}, "13": {"buy_mh": 123560424, "flag": false}, "14": {"buy_mh": 268416720, "flag": false}, "15": {"buy_mh": 602162964, "flag": false}, "16": {"buy_mh": 1414511748, "flag": false}, "17": {"buy_mh": 3431186460, "flag": false}, "18": {"buy_mh": 8668861812, "flag": false}, "19": {"buy_mh": 22785584796, "flag": false}, "20": {"buy_mh": 66340079676, "flag": false}}}, "黑宝石": {"l1_mh": 158371, "ref_level": 5, "levels": {"1": {"buy_mh": 158371, "flag": false}, "2": {"buy_mh": 316742, "flag": false}, "3": {"buy_mh": 633484, "flag": false}, "4": {"buy_mh": 1266968, "flag": false}, "5": {"buy_mh": 2533936, "flag": false}, "6": {"buy_mh": 5067872, "flag": false}, "7": {"buy_mh": 10135744, "flag": false}, "8": {"buy_mh": 20271488, "flag": false}, "9": {"buy_mh": 40542976, "flag": false}, "10": {"buy_mh": 81085952, "flag": false}, "11": {"buy_mh": 162171904, "flag": false}, "12": {"buy_mh": 332579100, "flag": false}, "13": {"buy_mh": 705701176, "flag": false}, "14": {"buy_mh": 1533031280, "flag": false}, "15": {"buy_mh": 3439184636, "flag": false}, "16": {"buy_mh": 8078821452, "flag": false}, "17": {"buy_mh": 19596827540, "flag": false}, "18": {"buy_mh": 49511208988, "flag": false}, "19": {"buy_mh": 130137251604, "flag": false}, "20": {"buy_mh": 378893748724, "flag": false}}}, "红玛瑙": {"l1_mh": 74313, "ref_level": 6, "levels": {"1": {"buy_mh": 74313, "flag": false}, "2": {"buy_mh": 148626, "flag": false}, "3": {"buy_mh": 297252, "flag": false}, "4": {"buy_mh": 594504, "flag": false}, "5": {"buy_mh": 1189008, "flag": false}, "6": {"buy_mh": 2378016, "flag": false}, "7": {"buy_mh": 4756032, "flag": false}, "8": {"buy_mh": 9512064, "flag": false}, "9": {"buy_mh": 19024128, "flag": false}, "10": {"buy_mh": 38048256, "flag": false}, "11": {"buy_mh": 76096512, "flag": false}, "12": {"buy_mh": 156057300, "flag": false}, "13": {"buy_mh": 331138728, "flag": false}, "14": {"buy_mh": 719349840, "flag": false}, "15": {"buy_mh": 1613781108, "flag": false}, "16": {"buy_mh": 3790854756, "flag": false}, "17": {"buy_mh": 9195490620, "flag": false}, "18": {"buy_mh": 23232324564, "flag": false}, "19": {"buy_mh": 61064775612, "flag": false}, "20": {"buy_mh": 177789690972, "flag": false}}}, "舍利子": {"l1_mh": 94991, "ref_level": 5, "levels": {"1": {"buy_mh": 94991, "flag": false}, "2": {"buy_mh": 189982, "flag": false}, "3": {"buy_mh": 379964, "flag": false}, "4": {"buy_mh": 759928, "flag": false}, "5": {"buy_mh": 1519856, "flag": false}, "6": {"buy_mh": 3039712, "flag": false}, "7": {"buy_mh": 6079424, "flag": false}, "8": {"buy_mh": 12158848, "flag": false}, "9": {"buy_mh": 24317696, "flag": false}, "10": {"buy_mh": 48635392, "flag": false}, "11": {"buy_mh": 97270784, "flag": false}, "12": {"buy_mh": 199481100, "flag": false}, "13": {"buy_mh": 423279896, "flag": false}, "14": {"buy_mh": 919512880, "flag": false}, "15": {"buy_mh": 2062824556, "flag": false}, "16": {"buy_mh": 4845680892, "flag": false}, "17": {"buy_mh": 11754186340, "flag": false}, "18": {"buy_mh": 29696846348, "flag": false}, "19": {"buy_mh": 78056384484, "flag": false}, "20": {"buy_mh": 227260648004, "flag": false}}}, "星辉石": {"l1_mh": 147105, "ref_level": 5, "levels": {"1": {"buy_mh": 147105, "flag": false}, "2": {"buy_mh": 441315, "flag": false}, "3": {"buy_mh": 1323945, "flag": false}, "4": {"buy_mh": 3971835, "flag": false}, "5": {"buy_mh": 11915505, "flag": false}, "6": {"buy_mh": 35746515, "flag": false}, "7": {"buy_mh": 107239545, "flag": false}, "8": {"buy_mh": 321718635, "flag": false}, "9": {"buy_mh": 977071410, "flag": false}, "10": {"buy_mh": 3074200290, "flag": false}, "11": {"buy_mh": 10199672280, "flag": false}}}, "翡翠石": {"l1_mh": 20797, "ref_level": 8, "levels": {"1": {"buy_mh": 20797, "flag": false}, "2": {"buy_mh": 41594, "flag": false}, "3": {"buy_mh": 83188, "flag": false}, "4": {"buy_mh": 166376, "flag": false}, "5": {"buy_mh": 332752, "flag": false}, "6": {"buy_mh": 665504, "flag": false}, "7": {"buy_mh": 1331008, "flag": false}, "8": {"buy_mh": 2662016, "flag": false}, "9": {"buy_mh": 5324032, "flag": false}, "10": {"buy_mh": 10648064, "flag": false}, "11": {"buy_mh": 21296128, "flag": false}, "12": {"buy_mh": 43673700, "flag": false}, "13": {"buy_mh": 92671432, "flag": false}, "14": {"buy_mh": 201314960, "flag": false}, "15": {"buy_mh": 451627652, "flag": false}, "16": {"buy_mh": 1060896564, "flag": false}, "17": {"buy_mh": 2573420780, "flag": false}, "18": {"buy_mh": 6501724516, "flag": false}, "19": {"buy_mh": 17089394028, "flag": false}, "20": {"buy_mh": 49755657868, "flag": false}}}};
+const SUGGESTED_BUY = {"太阳石": {"l1_mh": 0, "ref_level": 0, "levels": {}}, "月亮石": {"l1_mh": 0, "ref_level": 0, "levels": {}}, "光芒石": {"l1_mh": 0, "ref_level": 0, "levels": {}}, "黑宝石": {"l1_mh": 0, "ref_level": 0, "levels": {}}, "红玛瑙": {"l1_mh": 0, "ref_level": 0, "levels": {}}, "舍利子": {"l1_mh": 0, "ref_level": 0, "levels": {}}, "星辉石": {"l1_mh": 0, "ref_level": 0, "levels": {}}, "翡翠石": {"l1_mh": 20797, "ref_level": 8, "levels": {"1": {"buy_mh": 20797, "flag": false}, "2": {"buy_mh": 41594, "flag": false}, "3": {"buy_mh": 83188, "flag": false}, "4": {"buy_mh": 166376, "flag": false}, "5": {"buy_mh": 332752, "flag": false}, "6": {"buy_mh": 665504, "flag": false}, "7": {"buy_mh": 1331008, "flag": false}, "8": {"buy_mh": 2662016, "flag": false}, "9": {"buy_mh": 5324032, "flag": false}, "10": {"buy_mh": 10648064, "flag": false}, "11": {"buy_mh": 21296128, "flag": false}, "12": {"buy_mh": 43673700, "flag": false}, "13": {"buy_mh": 92671432, "flag": false}, "14": {"buy_mh": 201314960, "flag": false}, "15": {"buy_mh": 451627652, "flag": false}, "16": {"buy_mh": 1060896564, "flag": false}, "17": {"buy_mh": 2573420780, "flag": false}, "18": {"buy_mh": 6501724516, "flag": false}, "19": {"buy_mh": 17089394028, "flag": false}, "20": {"buy_mh": 49755657868, "flag": false}}}};
 const GEMS = Object.keys(DATA);
 
-// ── Starstone Feature ──
+const SUGGESTED_BUY_HISTORY = {"dates": ["2026-05-25", "2026-05-26"], "gems": {"太阳石": [65106, 0], "月亮石": [53856, 0], "光芒石": [27806, 0], "黑宝石": [159574, 0], "红玛瑙": [74960, 0], "舍利子": [95745, 0], "星辉石": [151300, 0], "翡翠石": [21223, 20797]}};
+
+// ── Buy Summary Cards ──
 (function() {
-  const ss = DATA['星辉石'].levels;
-  const grid = document.getElementById('starstone-grid');
-  Object.entries(ss).forEach(([lv, d]) => {
-    const cell = document.createElement('div');
-    cell.className = 'ss-cell';
-    cell.innerHTML = `<div class="ss-lv">${lv} 级</div><div class="ss-price">¥${d.avg.toLocaleString()}</div><div class="ss-count">${d.count} 条 · ¥${d.min}~¥${d.max}</div>`;
-    grid.appendChild(cell);
+  const grid = document.getElementById('buy-grid');
+  const histArr = SUGGESTED_BUY_HISTORY?.gems || {};
+
+  GEMS.forEach(gem => {
+    const b = SUGGESTED_BUY[gem];
+    if (!b || !b.l1_mh) return;
+
+    const card = document.createElement('div');
+    card.className = 'buy-card';
+
+    // 薄利标记
+    const hasFlag = Object.values(b.levels || {}).some(lv => lv.flag);
+    if (hasFlag) card.classList.add('flag-thin');
+
+    const l1w = Math.round(b.l1_mh / 10000);
+
+    // 较昨日变动
+    let deltaHtml = '';
+    const hArr = histArr[gem]?.l1_mh;
+    if (hArr && hArr.length >= 2) {
+      const prev = hArr[hArr.length - 2];
+      if (prev > 0) {
+        const pct = ((b.l1_mh - prev) / prev * 100);
+        const cls = pct > 1 ? 'up' : pct < -1 ? 'down' : 'flat';
+        const arrow = pct > 1 ? '↑' : pct < -1 ? '↓' : '→';
+        deltaHtml = `<div class="bc-delta ${cls}">${arrow} ${Math.abs(pct).toFixed(1)}%</div>`;
+      }
+    }
+
+    card.innerHTML = `
+      <div class="bc-emoji">${GEM_EMOJI[gem]}</div>
+      <div class="bc-gem">${gem}</div>
+      <div class="bc-price">${l1w}万</div>
+      <div class="bc-meta">MH/级 · 参考${b.ref_level}级</div>
+      ${deltaHtml}`;
+
+    grid.appendChild(card);
+  });
+})();
+
+// ── Buy Trend Chart ──
+(function() {
+  const hist = SUGGESTED_BUY_HISTORY;
+  if (!hist || !hist.dates || hist.dates.length < 2) {
+    document.getElementById('chartBuyTrend').parentElement.style.display = 'none';
+    return;
+  }
+
+  const gemColors = ['#d4a853','#e8c76a','#c49530','#f0d060','#a08030','#b8943a','#d4a853','#906830'];
+  const datasets = GEMS.map((g, i) => {
+    const data = (hist.gems[g]?.l1_mh || []).map(v => v > 0 ? Math.round(v / 10000) : null);
+    const allSame = data.every(v => v === data[0]);
+    return {
+      label: g,
+      data: data,
+      borderColor: gemColors[i % gemColors.length],
+      backgroundColor: gemColors[i % gemColors.length] + '20',
+      borderWidth: 2,
+      tension: 0.3,
+      pointRadius: 3,
+      pointBackgroundColor: gemColors[i % gemColors.length],
+      hidden: allSame && data.length >= 2,
+    };
+  });
+
+  new Chart(document.getElementById('chartBuyTrend'), {
+    type: 'line',
+    data: { labels: hist.dates, datasets },
+    options: {
+      responsive: true,
+      plugins: {
+        title: { display: true, text: '一级建议收购价走势 (万MH)', font: { size: 16, family: "'Noto Serif SC',serif", weight: '700' }, color: '#e8e6e3', padding: 20 },
+        legend: { position: 'bottom', labels: { boxWidth: 12, padding: 16, usePointStyle: true, font: { size: 11 } } },
+      },
+      scales: {
+        y: { grid: { color: 'rgba(37,42,51,0.6)' }, ticks: { callback: v => v + '万' } },
+        x: { grid: { display: false } },
+      },
+    }
+  });
+})();
+
+// ── Buy Advice ──
+function getAdvice(gemName, l1Mh, hist) {
+  /* === 收购建议判断规则（用户可在此扩展） === */
+  if (!l1Mh || l1Mh <= 0) return { action: '观望', cls: 'hold', reason: '无可靠参考价' };
+  const arr = hist?.gems?.[gemName]?.l1_mh;
+  if (!arr || arr.length < 2) return { action: '观望', cls: 'hold', reason: '历史数据不足（需≥2天）' };
+  const prev = arr[arr.length - 2];
+  if (prev <= 0) return { action: '观望', cls: 'hold', reason: '前值异常' };
+  const pct = (l1Mh - prev) / prev;
+  if (pct < -0.05) return { action: '建议买入', cls: 'buy', reason: `收购价降 ${Math.abs(pct*100).toFixed(1)}%，成本有利` };
+  if (pct > 0.05) return { action: '暂缓', cls: 'skip', reason: `收购价涨 ${(pct*100).toFixed(1)}%，等回落` };
+  return { action: '可收购', cls: 'buy', reason: '价格平稳，可正常收购' };
+}
+
+(function() {
+  const list = document.getElementById('buy-advice-list');
+  const hist = SUGGESTED_BUY_HISTORY;
+
+  GEMS.forEach(gem => {
+    const b = SUGGESTED_BUY[gem];
+    if (!b) return;
+    const adv = getAdvice(gem, b.l1_mh, hist);
+
+    const item = document.createElement('div');
+    item.className = 'buy-advice-item';
+    item.innerHTML = `
+      <span class="ba-action ${adv.cls}">${adv.action}</span>
+      <span class="ba-gem">${GEM_EMOJI[gem]} ${gem}</span>
+      <span class="ba-reason">${adv.reason}</span>`;
+    list.appendChild(item);
   });
 })();
 
