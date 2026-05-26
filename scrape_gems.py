@@ -18,6 +18,9 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError
 
 CDP_PROXY = "http://localhost:3456"
+SEARCH_URL = "https://xyq.cbg.163.com/cgi-bin/query.py?act=search_role_equip"
+COLLECT_URL = "https://xyq.cbg.163.com/cgi-bin/userinfo.py?act=collect_list"
+MONEY_URL = "https://xyq.cbg.163.com/cgi-bin/query.py?act=query"
 
 # 宝石配置: (value, name)
 GEMS = [
@@ -69,12 +72,12 @@ def find_or_create_tab():
     # 先找已存在的 xyq.cbg.163.com tab
     for t in targets:
         url = t.get("url", "")
-        if "xyq.cbg.163.com" in url and "query.py" in url:
+        if "xyq.cbg.163.com" in url:
             return t["targetId"]
 
     # 没有则创建新 tab
     result = cdp_request("/new", method="POST",
-                         body="https://xyq.cbg.163.com/cgi-bin/query.py?act=search_role_equip")
+                         body=SEARCH_URL)
     if result:
         return result.get("targetId")
     return None
@@ -150,7 +153,8 @@ def scrape_gem(target_id, gem_value, gem_name):
             eval_js(target_id, f"goto({page});")
             time.sleep(2)
 
-        # 提取数据
+        # 提取数据（含 order_sn 用于收藏）
+        # 提取数据（innerText 解析 + DOM 提取 order_sn）
         page_data_json = eval_js(target_id, '''(() => {
             const text = document.body.innerText;
             const lines = text.split("\\n");
@@ -168,12 +172,37 @@ def scrape_gem(target_id, gem_value, gem_name):
                     if (levelMatch && priceMatch) {
                         results.push({
                             level: parseInt(levelMatch[1]),
-                            price: parseFloat(priceMatch[1])
+                            price: parseFloat(priceMatch[1]),
+                            order_sn: ""
                         });
                     }
                 }
                 i++;
             }
+            // 补充 order_sn：从 DOM 提取
+            const rows = document.querySelectorAll("#soldList tr");
+            let ri = 0;
+            rows.forEach(row => {
+                const cells = row.querySelectorAll("td");
+                if (cells.length < 6) return;
+                const nameText = (cells[1]?.innerText || "").trim();
+                if (!nameText.includes("''' + gem_name + '''")) return;
+                const lvMatch = nameText.match(/(\\d+)级/);
+                if (!lvMatch) return;
+                const lv = parseInt(lvMatch[1]);
+                const collectSpan = row.querySelector("span.equipListCollect");
+                const orderSn = collectSpan?.getAttribute("data-game_ordersn") || "";
+                if (orderSn && ri < results.length) {
+                    // 匹配 level
+                    for (let j = ri; j < results.length; j++) {
+                        if (results[j].level === lv && !results[j].order_sn) {
+                            results[j].order_sn = orderSn;
+                            break;
+                        }
+                    }
+                }
+                ri++;
+            });
             return JSON.stringify(results);
         })()''')
 
@@ -196,7 +225,7 @@ def scrape_money_rate(target_id):
     print(f"{'='*50}")
 
     cdp_request(f"/navigate?target={target_id}", method="POST",
-                body="https://xyq.cbg.163.com/cgi-bin/query.py?act=query")
+                body=MONEY_URL)
     time.sleep(2)
     eval_js(target_id, "search_by_kind(23, 2);")
     time.sleep(2)
@@ -379,6 +408,164 @@ def build_suggested_buy_history():
             gem_series[name].append(suggested.get(name, {}).get("l1_mh", 0))
 
     return {"dates": dates, "gems": dict(gem_series)}
+
+
+def check_transactions(target_id, today):
+    """检查收藏列表中"买家取走"的 item，记录成交价并删除收藏"""
+    transactions = []
+    print(f"\n{'='*50}")
+    print(f"  检查收藏列表成交状态...")
+    print(f"{'='*50}")
+
+    # 导航到收藏列表
+    cdp_request(f"/navigate?target={target_id}", method="POST",
+                body=COLLECT_URL)
+    time.sleep(2)
+
+    page = 1
+    while True:
+        # 解析当前页
+        code = '''(() => {
+            const rows = document.querySelectorAll('#soldList tr');
+            const items = [];
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('td');
+                if (cells.length < 8) return;
+                const nameText = (cells[1]?.innerText || '').trim();
+                const lvMatch = nameText.match(/(\\d+)级/);
+                const gemName = nameText.replace(/\\s*\\d+级.*/, '').trim();
+                const statusText = (cells[4]?.innerText || '').trim();
+                const priceText = (cells[3]?.innerText || '').trim();
+                const priceMatch = priceText.match(/[￥¥]([\\d.]+)/);
+                const delLink = cells[7]?.querySelector('a[href*=\"delete_collect\"]');
+                const href = delLink?.getAttribute('href') || '';
+                const snMatch = href.match(/order_sn=([\\d_]+)/);
+                if (lvMatch && priceMatch && snMatch) {
+                    items.push({
+                        gem: gemName,
+                        level: parseInt(lvMatch[1]),
+                        price: parseFloat(priceMatch[1]),
+                        status: statusText,
+                        order_sn: snMatch[1]
+                    });
+                }
+            });
+            // 检查是否有下一页
+            const hasNext = document.querySelector('.pages a[href*=\"page=' + ''' + str(page + 1) + ''' + '\"]') !== null;
+            const totalPages = (() => { const m = document.body.innerText.match(/共(\\d+)页/); return m ? parseInt(m[1]) : 1; })();
+            return JSON.stringify({items: items, hasNext: hasNext, totalPages: totalPages});
+        })()'''
+        result = eval_js(target_id, code)
+        if not result:
+            break
+        try:
+            data = json.loads(result)
+        except:
+            break
+
+        page_items = data.get("items", [])
+        total_pages = data.get("totalPages", 1)
+
+        for item in page_items:
+            status = item["status"]
+            if "买家取走" in status:
+                transactions.append(item)
+                print(f"  成交: {item['gem']} {item['level']}级 ¥{item['price']}")
+                # 删除已成交收藏
+                del_code = f"fetch('/cgi-bin/userinfo.py?act=ajax_del_collect&order_sn={item['order_sn']}')"
+                eval_js(target_id, del_code)
+                time.sleep(0.3)
+            elif "已失效" in status:
+                del_code = f"fetch('/cgi-bin/userinfo.py?act=ajax_del_collect&order_sn={item['order_sn']}')"
+                eval_js(target_id, del_code)
+                time.sleep(0.3)
+
+        if page >= total_pages:
+            break
+        page += 1
+        eval_js(target_id, f"goto_page({page})")
+        time.sleep(2)
+
+    print(f"  共发现 {len(transactions)} 笔成交")
+    return transactions
+
+
+def favorite_top3(target_id, gem_name, all_items):
+    """对每种宝石 8-12 级各收藏价格最低的 3 个 listing"""
+    from collections import defaultdict
+
+    # 筛选 8-12 级
+    by_level = defaultdict(list)
+    for item in all_items:
+        lv = item["level"]
+        if 8 <= lv <= 12:
+            by_level[lv].append(item)
+
+    count = 0
+    for lv in sorted(by_level.keys()):
+        # 按价格排序取前3
+        top3 = sorted(by_level[lv], key=lambda x: x["price"])[:3]
+        for item in top3:
+            code = f'''
+            (() => {{
+                const span = document.querySelector("span.equipListCollect[data-game_ordersn='{item.get("order_sn", "")}']");
+                if (span && !span.classList.contains("on")) {{
+                    span.click();
+                    return "ok";
+                }}
+                return "skip";
+            }})()'''
+            result = eval_js(target_id, code)
+            if result and result != "skip":
+                count += 1
+            time.sleep(0.5)
+
+    if count > 0:
+        print(f"  {gem_name}: 收藏 8-12 级共 {count} 个 listing")
+    return count
+
+
+def build_transactions_history():
+    """从 transactions.csv 构建历史成交数据，用于 dashboard 注入"""
+    tx_path = os.path.join(OUTPUT_DIR, "transactions.csv")
+    if not os.path.exists(tx_path):
+        return None
+
+    from collections import defaultdict
+    gem_names = [name for _, name in GEMS]
+    dates_set = set()
+    # gem -> level -> date -> price
+    gem_lv_date_price = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+
+    with open(tx_path, encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            date_str = row.get("成交日期", "")
+            gem = row.get("宝石", "")
+            level = row.get("等级", "")
+            price = float(row.get("成交价(元)", 0))
+            if date_str and gem and level:
+                dates_set.add(date_str)
+                gem_lv_date_price[gem][level][date_str].append(price)
+
+    dates = sorted(dates_set)
+    if len(dates) < 1:
+        return None
+
+    result = {"dates": dates, "gems": {}}
+    for gem in gem_names:
+        result["gems"][gem] = {}
+        for lv in ["8", "9", "10", "11", "12"]:
+            prices_by_date = []
+            for d in dates:
+                day_prices = gem_lv_date_price.get(gem, {}).get(lv, {}).get(d, [])
+                if day_prices:
+                    prices_by_date.append(round(min(day_prices), 2))  # 最低成交价
+                else:
+                    prices_by_date.append(None)
+            result["gems"][gem][lv] = prices_by_date
+
+    return result
 
 
 def save_to_csv(all_results, date_str):
@@ -571,6 +758,15 @@ def regenerate_dashboard(csv_path, date_str, rate_info=None, suggested=None):
         new_html,
     )
 
+    # 注入 TRANSACTIONS
+    tx_history = build_transactions_history()
+    js_tx = json.dumps(tx_history, ensure_ascii=False) if tx_history else "null"
+    new_html = re.sub(
+        r'const TRANSACTIONS = \{.*?\};',
+        f'const TRANSACTIONS = {js_tx};',
+        new_html,
+    )
+
     new_html = re.sub(r'<span class="date-tag">[^<]*</span>', f'<span class="date-tag">{date_str}</span>', new_html)
     starstone_total = data.get("星辉石", {}).get("total", 0)
     new_html = re.sub(r'共 [\d,]+ 条在售', f'共 {starstone_total} 条在售', new_html)
@@ -630,8 +826,26 @@ def main():
     if "act=search_role_equip" not in str(current_url):
         print("导航到道具搜索页面...")
         cdp_request(f"/navigate?target={target_id}", method="POST",
-                    body="https://xyq.cbg.163.com/cgi-bin/query.py?act=search_role_equip")
+                    body=SEARCH_URL)
         time.sleep(3)
+
+    # 4.5 检查收藏列表中的成交
+    transactions = check_transactions(target_id, today)
+    if transactions:
+        tx_path = os.path.join(OUTPUT_DIR, "transactions.csv")
+        tx_exists = os.path.exists(tx_path)
+        with open(tx_path, "a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            if not tx_exists:
+                writer.writerow(["成交日期", "宝石", "等级", "成交价(元)", "order_sn"])
+            for tx in transactions:
+                writer.writerow([today, tx["gem"], tx["level"], tx["price"], tx["order_sn"]])
+        print(f"  成交数据已保存: {len(transactions)} 笔")
+
+    # 回到道具搜索页面
+    cdp_request(f"/navigate?target={target_id}", method="POST",
+                body=SEARCH_URL)
+    time.sleep(5)  # 等待页面完全加载
 
     # 5. 逐个抓取宝石数据
     all_results = []
@@ -639,6 +853,8 @@ def main():
         try:
             data = scrape_gem(target_id, gem_value, gem_name)
             all_results.append((gem_name, data))
+            # 5.5 收藏 8-12 级最低价前3
+            favorite_top3(target_id, gem_name, data)
         except Exception as e:
             print(f"  抓取 {gem_name} 失败: {e}")
             all_results.append((gem_name, []))
