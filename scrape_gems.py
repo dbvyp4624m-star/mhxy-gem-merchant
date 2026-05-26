@@ -251,7 +251,9 @@ def scrape_money_rate(target_id):
 
 def compute_suggested_buy(data, rate_info):
     """计算每种宝石的一级建议收购价(梦幻币)，含10%利润。
-    用价格 > 11 的最高等级反推一级等效价，避开 ¥10 地板价失真。
+    优先使用最低的"健康"等级：该等级最低价 > ¥11 且与相邻等级
+    价格比符合合成倍率(±12%)，说明定价自然、未被地板价扭曲。
+    若无健康等级，回退到 l1_rmb 最低的等级。
     对所有等级计算收购价，标注薄利等级(cost >= 卖价×0.95)。
     """
     if not rate_info:
@@ -261,23 +263,44 @@ def compute_suggested_buy(data, rate_info):
     suggested = {}
     for gem_name, gem_data in data.items():
         synth = SYNTHESIS.get(gem_name, SYNTHESIS["_default"])
-        # 找可靠等级(价格>11)
-        best_l1_rmb = None
-        ref_level = None
-        for lv_str, lv_data in sorted(gem_data["levels"].items(), key=lambda x: int(x[0]), reverse=True):
+        expected_ratio = 3 if gem_name == "星辉石" else 2
+        tolerance = 0.12
+
+        # 收集所有 min > 11 的等级，按等级升序
+        valid_levels = []
+        for lv_str, lv_data in gem_data["levels"].items():
             lv = int(lv_str)
             if lv not in synth:
                 continue
             if lv_data["min"] <= 11:
                 continue
             l1_rmb = lv_data["min"] / synth[lv]
-            if best_l1_rmb is None or l1_rmb < best_l1_rmb:
-                best_l1_rmb = l1_rmb
-                ref_level = lv
+            valid_levels.append((lv, lv_data["min"], l1_rmb))
+        valid_levels.sort()
 
-        if best_l1_rmb is None:
+        if not valid_levels:
             suggested[gem_name] = {"l1_mh": 0, "ref_level": 0, "levels": {}}
             continue
+
+        # 找最低的"健康"等级：与相邻等级价格比符合合成倍率
+        ref_level = None
+        best_l1_rmb = None
+        for i, (lv, min_p, l1_rmb) in enumerate(valid_levels):
+            if i + 1 < len(valid_levels):
+                next_lv, next_min, _ = valid_levels[i + 1]
+                levels_gap = next_lv - lv
+                expected = expected_ratio ** levels_gap
+                actual = next_min / min_p
+                if abs(actual - expected) / expected <= tolerance:
+                    ref_level = lv
+                    best_l1_rmb = l1_rmb
+                    break  # 找到第一个健康等级即停止
+
+        # 回退：无健康等级时用 l1_rmb 最低的等级
+        if ref_level is None:
+            best = min(valid_levels, key=lambda x: x[2])
+            ref_level = best[0]
+            best_l1_rmb = best[2]
 
         l1_mh = round(best_l1_rmb * mh_per_rmb * 0.9)  # 留10%利润
         levels_out = {}
