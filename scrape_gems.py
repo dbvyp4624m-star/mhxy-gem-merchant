@@ -302,6 +302,62 @@ def compute_suggested_buy(data, rate_info):
     return suggested
 
 
+def build_suggested_buy_history():
+    """从所有历史 CSV + 汇率数据重建每日 SUGGESTED_BUY，提取 l1_mh 趋势"""
+    import glob
+    from collections import defaultdict
+
+    csv_files = sorted(glob.glob(os.path.join(OUTPUT_DIR, "gem_prices_*.csv")))
+    rate_path = os.path.join(OUTPUT_DIR, "money_rate.csv")
+    rates_by_date = {}
+    if os.path.exists(rate_path):
+        with open(rate_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                rates_by_date[row["日期"]] = {
+                    "unit_price": float(row["最低单价(元/万两)"]),
+                    "effective_rate": float(row["实际汇率(×0.93)"]),
+                    "mh_per_rmb": int(row["1RMB=MH"]),
+                }
+
+    gem_names = [name for _, name in GEMS]
+    dates = []
+    gem_series = defaultdict(lambda: [])
+
+    for fpath in csv_files:
+        date_match = re.search(r"(\d{4}-\d{2}-\d{2})", os.path.basename(fpath))
+        if not date_match:
+            continue
+        date_str = date_match.group(1)
+        rate_info = rates_by_date.get(date_str)
+        if not rate_info:
+            continue
+
+        with open(fpath, encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        gem_data = defaultdict(lambda: defaultdict(list))
+        for r in rows:
+            gem_data[r["宝石"]][int(r["等级"])].append(float(r["价格(元)"]))
+        data = {}
+        for name in gem_names:
+            levels = gem_data.get(name, {})
+            lv_info = {}
+            for lv, prices in sorted(levels.items()):
+                lv_info[str(lv)] = {
+                    "min": round(min(prices), 2),
+                    "max": round(max(prices), 2),
+                    "avg": round(sum(prices) / len(prices), 2),
+                    "count": len(prices),
+                }
+            data[name] = {"levels": lv_info}
+
+        suggested = compute_suggested_buy(data, rate_info)
+        dates.append(date_str)
+        for name in gem_names:
+            gem_series[name].append(suggested.get(name, {}).get("l1_mh", 0))
+
+    return {"dates": dates, "gems": dict(gem_series)}
+
+
 def save_to_csv(all_results, date_str):
     """保存数据到 CSV"""
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -482,6 +538,15 @@ def regenerate_dashboard(csv_path, date_str, rate_info=None, suggested=None):
         new_html = re.sub(r'const SYNTHESIS = \{.*?\};', f'const SYNTHESIS = {js_synth};', new_html)
         js_buy = json.dumps(suggested if suggested else {}, ensure_ascii=False)
         new_html = re.sub(r'const SUGGESTED_BUY = \{.*?\};', f'const SUGGESTED_BUY = {js_buy};', new_html)
+
+    # 注入 SUGGESTED_BUY_HISTORY
+    buy_history = build_suggested_buy_history()
+    js_buy_hist = json.dumps(buy_history, ensure_ascii=False) if buy_history else "null"
+    new_html = re.sub(
+        r'const SUGGESTED_BUY_HISTORY = \{.*?\};',
+        f'const SUGGESTED_BUY_HISTORY = {js_buy_hist};',
+        new_html,
+    )
 
     new_html = re.sub(r'<span class="date-tag">[^<]*</span>', f'<span class="date-tag">{date_str}</span>', new_html)
     starstone_total = data.get("星辉石", {}).get("total", 0)
