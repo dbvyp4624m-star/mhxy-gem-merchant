@@ -231,6 +231,36 @@ body {
 .buy-advice-item .ba-gem { font-weight: 600; }
 .buy-advice-item .ba-reason { font-size: 12px; color: var(--text-secondary); }
 
+/* ── Transaction Grid ── */
+.txn-grid { display: flex; flex-direction: column; gap: 6px; margin-bottom: 32px; }
+.txn-row {
+  display: grid;
+  grid-template-columns: 80px repeat(5, 1fr);
+  gap: 6px; align-items: center;
+  padding: 8px 12px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.txn-row .txn-gem { font-weight: 600; font-size: 13px; }
+.txn-row .txn-cell {
+  text-align: center; padding: 6px 4px; border-radius: 4px;
+  font-family: 'DM Mono', monospace; font-size: 13px;
+}
+.txn-cell.sold { background: rgba(46,204,113,0.12); color: var(--emerald); }
+.txn-cell.none { background: rgba(102,99,94,0.08); color: var(--text-muted); font-family: 'Inter','Noto Sans SC',sans-serif; font-size: 11px; }
+.txn-header {
+  display: grid; grid-template-columns: 80px repeat(5, 1fr);
+  gap: 6px; padding: 0 12px 4px;
+  text-align: center; font-size: 11px; color: var(--text-muted);
+}
+
+@media (max-width: 768px) {
+  .txn-row { grid-template-columns: 60px repeat(5, 1fr); }
+  .txn-header { grid-template-columns: 60px repeat(5, 1fr); }
+  .txn-row .txn-gem { font-size: 11px; }
+  .txn-cell { font-size: 11px; padding: 4px 2px; }
+}
+
 /* ── Gem Tables ── */
 .gem-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 48px; }
 .gem-item { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: all var(--transition); }
@@ -473,6 +503,10 @@ body {
 
   <div class="section-title">收购建议</div>
   <div class="buy-advice-list" id="buy-advice-list"></div>
+
+  <!-- Transaction Prices -->
+  <div class="section-title">8-12级 最新成交价</div>
+  <div class="txn-grid" id="txn-grid"></div>
 
   <!-- Charts -->
   <div class="section-title">价格总览</div>
@@ -1047,6 +1081,8 @@ const GEMS = Object.keys(DATA);
 
 const SUGGESTED_BUY_HISTORY = {"dates": ["2026-05-25", "2026-05-26"], "gems": {"太阳石": [65106, 68270], "月亮石": [53856, 53751], "光芒石": [27926, 27748], "黑宝石": [159574, 150661], "红玛瑙": [74960, 74379], "舍利子": [95745, 95205], "星辉石": [151300, 152014], "翡翠石": [21223, 20826]}};
 
+const TRANSACTIONS = {};
+
 // ── Buy Summary Cards ──
 (function() {
   const grid = document.getElementById('buy-grid');
@@ -1161,6 +1197,42 @@ function getAdvice(gemName, l1Mh, hist) {
       <span class="ba-gem">${GEM_EMOJI[gem]} ${gem}</span>
       <span class="ba-reason">${adv.reason}</span>`;
     list.appendChild(item);
+  });
+})();
+
+// ── Transaction Prices ──
+(function() {
+  const grid = document.getElementById('txn-grid');
+  const tx = TRANSACTIONS;
+  const levels = ['8','9','10','11','12'];
+
+  if (!tx || !tx.dates || tx.dates.length === 0) {
+    grid.innerHTML = '<div style="padding:16px;color:var(--text-muted);text-align:center;font-size:13px">暂无成交数据，运行次日开始统计</div>';
+    return;
+  }
+
+  // 表头
+  const header = document.createElement('div');
+  header.className = 'txn-header';
+  header.innerHTML = '<span></span>' + levels.map(l => `<span>${l}级</span>`).join('');
+  grid.appendChild(header);
+
+  const latestIdx = tx.dates.length - 1;
+
+  GEMS.forEach(gem => {
+    const row = document.createElement('div');
+    row.className = 'txn-row';
+    let cells = `<span class="txn-gem">${GEM_EMOJI[gem]} ${gem}</span>`;
+    levels.forEach(lv => {
+      const prices = tx.gems?.[gem]?.[lv];
+      if (prices && prices[latestIdx] !== null && prices[latestIdx] !== undefined) {
+        cells += `<span class="txn-cell sold">¥${prices[latestIdx]}</span>`;
+      } else {
+        cells += `<span class="txn-cell none">无成交</span>`;
+      }
+    });
+    row.innerHTML = cells;
+    grid.appendChild(row);
   });
 })();
 
