@@ -491,7 +491,7 @@ def check_transactions(target_id, today):
 
 
 def favorite_top3(target_id, gem_name, all_items):
-    """对每种宝石 8-12 级各收藏价格最低的 3 个 listing"""
+    """对每种宝石 8-12 级各收藏价格最低的 3 个 listing（通过 AJAX API）"""
     from collections import defaultdict
 
     # 筛选 8-12 级
@@ -506,19 +506,14 @@ def favorite_top3(target_id, gem_name, all_items):
         # 按价格排序取前3
         top3 = sorted(by_level[lv], key=lambda x: x["price"])[:3]
         for item in top3:
-            code = f'''
-            (() => {{
-                const span = document.querySelector("span.equipListCollect[data-game_ordersn='{item.get("order_sn", "")}']");
-                if (span && !span.classList.contains("on")) {{
-                    span.click();
-                    return "ok";
-                }}
-                return "skip";
-            }})()'''
+            sn = item.get("order_sn", "")
+            if not sn:
+                continue
+            code = f"fetch('/cgi-bin/userinfo.py?act=ajax_add_collect&order_sn={sn}').then(r => r.json()).then(j => j.status === 1 ? 'ok' : 'fail')"
             result = eval_js(target_id, code)
-            if result and result != "skip":
+            if result == "ok":
                 count += 1
-            time.sleep(0.5)
+            time.sleep(0.3)
 
     if count > 0:
         print(f"  {gem_name}: 收藏 8-12 级共 {count} 个 listing")
@@ -575,10 +570,10 @@ def save_to_csv(all_results, date_str):
 
     with open(filepath, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["日期", "宝石", "等级", "价格(元)"])
+        writer.writerow(["日期", "宝石", "等级", "价格(元)", "order_sn"])
         for gem_name, data in all_results:
             for item in data:
-                writer.writerow([date_str, gem_name, item["level"], item["price"]])
+                writer.writerow([date_str, gem_name, item["level"], item["price"], item.get("order_sn", "")])
 
     print(f"\n数据已保存至: {filepath}")
     return filepath
