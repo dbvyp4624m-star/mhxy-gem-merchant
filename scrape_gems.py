@@ -677,6 +677,57 @@ def build_history():
     return {"dates": dates, "gems": dict(gem_series)}
 
 
+def build_level_history():
+    """从所有历史 CSV 构建每级最低价时间序列。
+    返回: {"dates": [...], "levels": {"5": {"太阳石": [10.0,...], ...}, "6": {...}}}
+    某日某等级无数据时填 null，前端折线断点显示。"""
+    import glob
+    from collections import defaultdict
+
+    csv_files = sorted(glob.glob(os.path.join(OUTPUT_DIR, "gem_prices_*.csv")))
+    if len(csv_files) < 2:
+        return None
+
+    gem_names = [name for _, name in GEMS]
+    dates = []
+    # levels[level_str][gem_name] = [min_price_day1, min_price_day2, ...]
+    levels = defaultdict(lambda: defaultdict(list))
+
+    # 先收集所有出现过的等级
+    all_levels = set()
+
+    for fpath in csv_files:
+        fname = os.path.basename(fpath)
+        date_match = re.search(r"(\d{4}-\d{2}-\d{2})", fname)
+        if not date_match:
+            continue
+        date_str = date_match.group(1)
+        dates.append(date_str)
+
+        with open(fpath, encoding="utf-8") as f:
+            frows = list(csv.DictReader(f))
+
+        # 当天 (gem, level) -> min_price
+        day_min = defaultdict(lambda: {})
+        for r in frows:
+            gem = r["宝石"]
+            lv = int(r["等级"])
+            price = float(r["价格(元)"])
+            if lv not in day_min[gem] or price < day_min[gem][lv]:
+                day_min[gem][lv] = price
+            all_levels.add(str(lv))
+
+        for name in gem_names:
+            gem_day = day_min.get(name, {})
+            for lv_str in sorted(all_levels, key=int):
+                lv = int(lv_str)
+                levels[lv_str][name].append(round(gem_day[lv], 2) if lv in gem_day else None)
+
+    # 按等级排序
+    sorted_levels = {lv: dict(levels[lv]) for lv in sorted(levels.keys(), key=int)}
+    return {"dates": dates, "levels": sorted_levels}
+
+
 def regenerate_dashboard(csv_path, date_str, rate_info=None, suggested=None):
     """从 CSV 重新生成 dashboard.html"""
     import glob
@@ -779,6 +830,15 @@ def regenerate_dashboard(csv_path, date_str, rate_info=None, suggested=None):
     new_html = re.sub(
         r'const TRANSACTIONS = \{.*?\};',
         f'const TRANSACTIONS = {js_tx};',
+        new_html,
+    )
+
+    # 注入 LEVEL_HISTORY
+    level_history = build_level_history()
+    js_level_hist = json.dumps(level_history, ensure_ascii=False) if level_history else "null"
+    new_html = re.sub(
+        r'const LEVEL_HISTORY = \{.*?\};',
+        f'const LEVEL_HISTORY = {js_level_hist};',
         new_html,
     )
 
