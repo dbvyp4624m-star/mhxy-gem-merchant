@@ -93,12 +93,149 @@ def eval_js(target_id, code):
     return None
 
 
+def eval_frame(target_id, frame_url_hint, code):
+    """在匹配 URL 的 iframe 中执行 JS"""
+    result = cdp_request(f"/evalFrame?target={target_id}&frameUrl={frame_url_hint}", method="POST", body=code)
+    if result and "value" in result:
+        return result["value"]
+    if result and "error" in result:
+        print(f"  Frame JS 错误: {result['error']}")
+    return None
+
+
 def check_login(target_id):
     """检查是否已登录"""
     text = eval_js(target_id, "document.body.innerText?.slice(0, 500) || ''")
     if not text:
         return False
     return "退出" in text and "钱包余额" in text
+
+
+def do_login(target_id, email, password, server_id="149", area_id="45"):
+    """自动登录藏宝阁：选择服务器 → 邮箱登录 → 选择第一个角色"""
+    import time as _time
+
+    # 1. 导航到登录页面（带服务器参数）
+    login_url = (
+        f"https://xyq.cbg.163.com/cgi-bin/show_login.py"
+        f"?act=show_login&area_id={area_id}&area_name=%E8%BF%BD%E5%BF%86"
+        f"&server_id={server_id}&server_name=%E5%86%8D%E7%BB%AD%E5%89%8D%E7%BC%98"
+    )
+    print("  导航到登录页面...")
+    cdp_request(f"/navigate?target={target_id}", method="POST", body=login_url)
+    _time.sleep(3)
+
+    # 检查是否已登录（可能 cookie 未过期）
+    if check_login(target_id):
+        print("  已登录，跳过登录流程")
+        return True
+
+    # 2. 点击"邮箱登录"tab
+    print("  选择邮箱登录...")
+    eval_js(target_id, 'document.getElementById("tabBtn2").click(); "done"')
+    _time.sleep(1)
+
+    # 3. 在 iframe 中填写邮箱和密码
+    print("  填写账号密码...")
+    eval_frame(target_id, "dl.reg.163.com", f'''(() => {{
+        const emailEl = document.querySelector('input[name="email"]');
+        if (emailEl) {{
+            emailEl.focus();
+            emailEl.value = "{email}";
+            emailEl.dispatchEvent(new Event('input', {{bubbles: true}}));
+            emailEl.dispatchEvent(new Event('change', {{bubbles: true}}));
+        }}
+        return emailEl ? "email ok" : "no email input";
+    }})()''')
+    _time.sleep(0.3)
+
+    eval_frame(target_id, "dl.reg.163.com", f'''(() => {{
+        const pwdEl = document.querySelector('input[name="password"]');
+        if (pwdEl) {{
+            pwdEl.focus();
+            pwdEl.value = "{password}";
+            pwdEl.dispatchEvent(new Event('input', {{bubbles: true}}));
+            pwdEl.dispatchEvent(new Event('change', {{bubbles: true}}));
+        }}
+        return pwdEl ? "pwd ok" : "no pwd input";
+    }})()''')
+    _time.sleep(0.5)
+
+    # 4. 点击登录按钮
+    print("  提交登录...")
+    eval_frame(target_id, "dl.reg.163.com", 'document.getElementById("dologin").click(); "clicked"')
+    _time.sleep(5)
+
+    # 5. 等待角色选择页面加载，选择第一个角色
+    for attempt in range(10):
+        url = eval_js(target_id, "document.location.href") or ""
+        if "show_role_select_page" in url:
+            break
+        if check_login(target_id):
+            print("  登录成功（无角色选择页）")
+            return True
+        _time.sleep(2)
+    else:
+        print("  警告: 角色选择页未出现")
+
+    # 6. 查找第一个角色并点击
+    print("  选择第一个角色...")
+    first_role_id = eval_js(target_id, '''(() => {
+        const panel = document.getElementById('role_list_panel');
+        if (!panel) return null;
+        const firstLi = panel.querySelector('li[id^="role_el_"]');
+        if (!firstLi) return null;
+        const img = firstLi.querySelector('img[id^="icon_"]');
+        return img ? img.id.replace('icon_', '') : null;
+    })()''')
+
+    if first_role_id:
+        print(f"  选中角色 ID: {first_role_id}")
+        eval_js(target_id, f'document.getElementById("icon_{first_role_id}").click(); "done"')
+        _time.sleep(1)
+
+        # 显示角色信息
+        nickname = eval_js(target_id, '''(() => {
+            const el = document.getElementById('select_role_nickname');
+            return el ? el.innerText.trim() : '?';
+        })()''')
+        print(f"  角色名: {nickname}")
+
+        # 7. 点击"进入"
+        eval_js(target_id, '''(() => {
+            const all = document.querySelectorAll('a');
+            for (const a of all) {
+                if ((a.innerText || '').trim().replace(/\\s+/g, '') === '进入') {
+                    a.click();
+                    return 'clicked';
+                }
+            }
+            return 'not found';
+        })()''')
+        _time.sleep(5)
+    else:
+        print("  警告: 未找到角色列表，尝试直接进入")
+        eval_js(target_id, '''(() => {
+            const all = document.querySelectorAll('a');
+            for (const a of all) {
+                if ((a.innerText || '').trim().replace(/\\s+/g, '') === '进入') {
+                    a.click();
+                    return 'clicked';
+                }
+            }
+            return 'not found';
+        })()''')
+        _time.sleep(5)
+
+    # 8. 检查登录结果
+    if check_login(target_id):
+        print("  登录成功!")
+        return True
+
+    # 可能还在角色选择页或其他中间页面
+    url = eval_js(target_id, "document.location.href") or ""
+    print(f"  当前 URL: {url}")
+    return check_login(target_id)
 
 
 def scrape_gem(target_id, gem_value, gem_name):
@@ -889,10 +1026,12 @@ def main():
 
     print(f"\n使用 tab: {target_id}")
 
-    # 3. 检查登录状态
+    # 3. 检查登录状态，未登录则自动登录
     if not check_login(target_id):
-        print("\n错误: 未登录藏宝阁! 请先在 Chrome 中登录 xyq.cbg.163.com")
-        return 1
+        print("未登录，开始自动登录...")
+        if not do_login(target_id, "dhlwukai333@163.com", "Dhl123456"):
+            print("\n错误: 自动登录失败!")
+            return 1
 
     print("登录状态: 已登录 ✓")
 
