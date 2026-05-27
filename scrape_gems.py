@@ -628,27 +628,21 @@ def check_transactions(target_id, today):
 
 
 def favorite_top3(target_id, gem_value, gem_name):
-    """对每种宝石 8-12 级，逐级筛选→按最低价排序→收藏页面上前3个"""
+    """对每种宝石 8-12 级，逐级筛选→价格从低到高排序→收藏前3个"""
     count = 0
 
     for lv in range(8, 13):
-        # 设置筛选条件：宝石种类 + 等级
-        code = f'''(() => {{
-            const stoneRadio = [...document.querySelectorAll("input[name=equip_kind]")]
-                .find(r => r.value === "search_stone");
-            if (stoneRadio) {{
-                stoneRadio.checked = true;
-                stoneRadio.dispatchEvent(new Event("change", {{bubbles: true}}));
-            }}
-            document.getElementById("s_stone_type").value = "{gem_value}";
-            document.getElementById("s_stone_level").value = "{lv}";
-            search_equip(1);
-            return "searching...";
-        }})()'''
-        eval_js(target_id, code)
+        # 搜索指定宝石+等级，加上价格升序参数
+        search_url = (
+            f"https://xyq.cbg.163.com/cgi-bin/query.py?act=search_stone"
+            f"&server_id=149&areaid=45"
+            f"&s_type={gem_value}&equip_level={lv}"
+            f"&query_order=price+ASC&page=1"
+        )
+        cdp_request(f"/navigate?target={target_id}", method="POST", body=search_url)
         time.sleep(2)
 
-        # 从当前页（page 1，默认按价格升序）提取前3个 order_sn 并收藏
+        # 从当前页提取前3个未收藏的 order_sn
         result = eval_js(target_id, '''(() => {
             const spans = document.querySelectorAll("span.equipListCollect[data-game_ordersn]:not(.on)");
             const sns = [];
