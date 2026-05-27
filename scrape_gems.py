@@ -1261,28 +1261,20 @@ def main():
                 body=SEARCH_URL)
     wait_for_selector(target_id, "#soldList tr,#search_box,.qFilter", timeout=5)
 
-    # 5. 逐个抓取宝石数据（快速模式：按等级遍历 + 收藏合并一趟完成）
-    # 每 3 个宝石换新 tab，防止浏览器状态退化
+    # 5. 逐个抓取宝石数据（快速模式，单 tab 全程复用登录态）
     all_results = []
-    for i, (gem_value, gem_name) in enumerate(GEMS):
-        if i > 0 and i % 3 == 0:
-            # 换新 tab
-            new_tab = cdp_request("/new", method="POST", body=SEARCH_URL)
-            if new_tab:
-                target_id = new_tab.get("targetId", target_id)
-                wait_for_selector(target_id, "#soldList tr,#search_box,.qFilter", timeout=5)
-                print(f"\n  切换到新 tab: {target_id}")
-
+    for gem_value, gem_name in GEMS:
         try:
+            # 每个宝石前检测验证码
+            if check_captcha(target_id):
+                print(f"\n⚠ 检测到验证码，中断抓取!")
+                print("  请在 Chrome 中手动完成验证后重试。")
+                break
             data = scrape_gem_fast(target_id, gem_value, gem_name)
             all_results.append((gem_name, data))
+            time.sleep(1.5)  # gem 间短暂休息，避免请求过密
         except Exception as e:
             print(f"  抓取 {gem_name} 失败: {e}")
-            # 失败时强制换 tab
-            new_tab = cdp_request("/new", method="POST", body=SEARCH_URL)
-            if new_tab:
-                target_id = new_tab.get("targetId", target_id)
-                wait_for_selector(target_id, "#soldList tr,#search_box,.qFilter", timeout=5)
             all_results.append((gem_name, []))
 
     # 6. 抓取梦幻币汇率
