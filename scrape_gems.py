@@ -360,6 +360,10 @@ def scrape_gem_fast(target_id, gem_value, gem_name, max_level=20):
         fav_str = f" 收藏{min(3, sum(1 for d in level_items if d.get('order_sn')))}个" if 8 <= lv <= 12 else ""
         print(f"  等级{lv}: {len(level_items)}条{pages_str}{fav_str}")
 
+        # 随机延迟模拟人类浏览节奏，避免触发频率检测
+        delay = 0.5 + (hash(f"{gem_name}{lv}") % 1500) / 1000.0
+        time.sleep(delay)
+
     if total_collected > 0:
         print(f"  {gem_name}: 收藏 8-12 级共 {total_collected} 个 listing")
     print(f"  总计 {gem_name}: {len(all_data)} 条")
