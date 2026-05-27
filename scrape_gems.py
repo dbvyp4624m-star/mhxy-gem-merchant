@@ -422,121 +422,86 @@ def run_self_check(all_results, rate_info=None):
 
 
 def scrape_gem(target_id, gem_value, gem_name):
-    """抓取单个宝石的所有页面数据"""
+    """抓取单个宝石的全部等级数据（一次搜索 + 翻页，约20次导航）"""
     print(f"\n{'='*50}")
     print(f"  抓取: {gem_name} (value={gem_value})")
     print(f"{'='*50}")
 
-    # 选中宝石分类并搜索
-    code = f'''(() => {{
-        const stoneRadio = [...document.querySelectorAll("input[name=equip_kind]")]
-            .find(r => r.value === "search_stone");
-        if (!stoneRadio) return "no stone radio";
-        stoneRadio.checked = true;
-        stoneRadio.dispatchEvent(new Event("change", {{bubbles: true}}));
-        document.getElementById("s_stone_type").value = "{gem_value}";
-        document.getElementById("s_stone_level").value = "";
-        search_equip(1);
-        return "searching...";
-    }})()'''
-
-    result = eval_js(target_id, code)
-    if not result:
-        print("  搜索提交失败")
+    # 选中宝石分类并搜索（清除等级筛选，获取全部等级）
+    code = (
+        "(() => {"
+        "  const stoneRadio = [...document.querySelectorAll('input[name=equip_kind]')]"
+        "    .find(r => r.value === 'search_stone');"
+        "  if (!stoneRadio) return 'no stone radio';"
+        "  stoneRadio.checked = true;"
+        "  stoneRadio.dispatchEvent(new Event('change', {bubbles: true}));"
+        f"  document.getElementById('s_stone_type').value = '{gem_value}';"
+        "  document.getElementById('s_stone_level').value = '';"
+        "  search_equip(1);"
+        "  return 'searching...';"
+        ")()"
+    )
+    eval_js(target_id, code)
+    if not wait_for_selector(target_id, "#soldList tr", timeout=5):
+        print("  搜索结果未加载")
         return []
 
-    time.sleep(3)
-
     # 获取总页数
-    page_info = eval_js(target_id, '''(() => {
-        const text = document.body.innerText;
-        const m = text.match(/< (\\d+)\\//) || text.match(/(\\d+)\\/(\\d+)/);
-        return m ? m[0] : "?";
-    })()''')
-    print(f"  分页信息: {page_info}")
-
     total_pages = 1
-    page_match = eval_js(target_id, '''(() => {
-        const text = document.body.innerText;
-        const m = text.match(/共(\\d+)页/);
-        return m ? m[1] : null;
-    })()''')
+    page_match = eval_js(target_id,
+        "(() => { const m = document.body.innerText.match(/共(\\d+)页/); return m ? m[1] : null; })()")
     if page_match:
         total_pages = int(page_match)
 
     all_data = []
-
     for page in range(1, total_pages + 1):
-        print(f"  抓取第 {page}/{total_pages} 页...", end=" ")
+        print(f"  第 {page}/{total_pages} 页...", end=" ")
 
         if page > 1:
-            eval_js(target_id, f"goto({page});")
-            time.sleep(2)
+            eval_js(target_id, "goto(" + str(page) + ")")
+            if not wait_for_selector(target_id, "#soldList tr", timeout=3):
+                print("超时")
+                continue
 
-        # 提取数据（含 order_sn 用于收藏）
-        # 提取数据（innerText 解析 + DOM 提取 order_sn）
-        page_data_json = eval_js(target_id, '''(() => {
-            const text = document.body.innerText;
-            const lines = text.split("\\n");
-            const results = [];
-            let i = 0;
-            while (i < lines.length) {
-                if (lines[i].trim() === "''' + gem_name + '''") {
-                    const nextLine = lines[i+1] ? lines[i+1].trim() : "";
-                    const levelMatch = nextLine.match(/^(\\d+)级$/);
-                    let priceLine = lines[i+2] ? lines[i+2].trim() : "";
-                    if (!priceLine.includes("￥")) {
-                        priceLine = lines[i+3] ? lines[i+3].trim() : "";
-                    }
-                    const priceMatch = priceLine.match(/^￥([\\d.]+)$/);
-                    if (levelMatch && priceMatch) {
-                        results.push({
-                            level: parseInt(levelMatch[1]),
-                            price: parseFloat(priceMatch[1]),
-                            order_sn: ""
-                        });
-                    }
-                }
-                i++;
-            }
-            // 补充 order_sn：从 DOM 提取
-            const rows = document.querySelectorAll("#soldList tr");
-            let ri = 0;
-            rows.forEach(row => {
-                const cells = row.querySelectorAll("td");
-                if (cells.length < 6) return;
-                const nameText = (cells[1]?.innerText || "").trim();
-                if (!nameText.includes("''' + gem_name + '''")) return;
-                const lvMatch = nameText.match(/(\\d+)级/);
-                if (!lvMatch) return;
-                const lv = parseInt(lvMatch[1]);
-                const collectSpan = row.querySelector("span.equipListCollect");
-                const orderSn = collectSpan?.getAttribute("data-game_ordersn") || "";
-                if (orderSn && ri < results.length) {
-                    // 匹配 level
-                    for (let j = ri; j < results.length; j++) {
-                        if (results[j].level === lv && !results[j].order_sn) {
-                            results[j].order_sn = orderSn;
-                            break;
-                        }
-                    }
-                }
-                ri++;
-            });
-            return JSON.stringify(results);
-        })()''')
+        # DOM 直接提取
+        js_code = (
+            "(() => {"
+            "  const rows = document.querySelectorAll('#soldList tr');"
+            "  const items = [];"
+            "  rows.forEach(row => {"
+            "    const cells = row.querySelectorAll('td');"
+            "    if (cells.length < 6) return;"
+            "    const nameText = (cells[1]?.innerText || '').trim();"
+            f"    if (!nameText.includes('{gem_name}')) return;"
+            "    const lvMatch = nameText.match(/(\\d+)级/);"
+            "    if (!lvMatch) return;"
+            "    const priceText = (cells[3]?.innerText || cells[2]?.innerText || '').trim();"
+            "    const priceMatch = priceText.match(/[￥¥]([\\d.]+)/);"
+            "    if (!priceMatch) return;"
+            "    const collectSpan = row.querySelector('span.equipListCollect');"
+            "    const orderSn = collectSpan?.getAttribute('data-game_ordersn') || '';"
+            "    items.push({"
+            "      level: parseInt(lvMatch[1]),"
+            "      price: parseFloat(priceMatch[1]),"
+            "      order_sn: orderSn"
+            "    });"
+            "  });"
+            "  return JSON.stringify(items);"
+            ")()"
+        )
+        page_data_json = eval_js(target_id, js_code)
 
         if page_data_json:
             try:
-                page_data = json.loads(page_data_json) if isinstance(page_data_json, str) else page_data_json
+                page_data = json.loads(page_data_json)
                 all_data.extend(page_data)
-                print(f"获取 {len(page_data)} 条")
+                print(f"{len(page_data)} 条")
             except json.JSONDecodeError:
-                print(f"JSON 解析失败: {page_data_json[:100]}")
+                print("解析失败")
+                pass
 
     print(f"  总计 {gem_name}: {len(all_data)} 条")
     return all_data
-
 
 def scrape_money_rate(target_id):
     """抓取梦幻币最低单价，计算 RMB/MH 汇率"""
@@ -1265,21 +1230,21 @@ def main():
                 body=SEARCH_URL)
     wait_for_selector(target_id, "#soldList tr,#search_box,.qFilter", timeout=5)
 
-    # 5. 逐个抓取宝石数据（快速模式，单 tab 全程复用登录态）
+    # 5. 逐个抓取宝石数据（一次搜索拉全部等级 + 翻页，减少导航次数防触发验证码）
     all_results = []
     for gem_value, gem_name in GEMS:
+        if check_captcha(target_id):
+            print(f"\n⚠ 检测到验证码，中断抓取!")
+            break
         try:
-            # 每个宝石前检测验证码
-            if check_captcha(target_id):
-                print(f"\n⚠ 检测到验证码，中断抓取!")
-                print("  请在 Chrome 中手动完成验证后重试。")
-                break
-            data = scrape_gem_fast(target_id, gem_value, gem_name)
+            data = scrape_gem(target_id, gem_value, gem_name)
             all_results.append((gem_name, data))
-            time.sleep(1.5)  # gem 间短暂休息，避免请求过密
+            # 收藏 8-12 级最低价前3
+            favorite_top3(target_id, gem_value, gem_name)
         except Exception as e:
             print(f"  抓取 {gem_name} 失败: {e}")
             all_results.append((gem_name, []))
+        time.sleep(1.5)
 
     # 6. 抓取梦幻币汇率
     rate_info = scrape_money_rate(target_id)
