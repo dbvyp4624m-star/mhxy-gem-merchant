@@ -1079,7 +1079,7 @@ const TRANSACTIONS = null;
 
     // 较昨日变动
     let deltaHtml = '';
-    const hArr = histArr[gem]?.l1_mh;
+    const hArr = histArr[gem];
     if (hArr && hArr.length >= 2) {
       const prev = hArr[hArr.length - 2];
       if (prev > 0) {
@@ -1111,7 +1111,7 @@ const TRANSACTIONS = null;
 
   const gemColors = ['#d4a853','#e8c76a','#c49530','#f0d060','#a08030','#b8943a','#d4a853','#906830'];
   const datasets = GEMS.map((g, i) => {
-    const data = (hist.gems[g]?.l1_mh || []).map(v => v > 0 ? Math.round(v / 10000) : null);
+    const data = (hist.gems[g] || []).map(v => v > 0 ? Math.round(v / 10000) : null);
     const allSame = data.every(v => v === data[0]);
     return {
       label: g,
@@ -1147,7 +1147,7 @@ const TRANSACTIONS = null;
 function getAdvice(gemName, l1Mh, hist) {
   /* === 收购建议判断规则（用户可在此扩展） === */
   if (!l1Mh || l1Mh <= 0) return { action: '观望', cls: 'hold', reason: '无可靠参考价' };
-  const arr = hist?.gems?.[gemName]?.l1_mh;
+  const arr = hist?.gems?.[gemName];
   if (!arr || arr.length < 2) return { action: '观望', cls: 'hold', reason: '历史数据不足（需≥2天）' };
   const prev = arr[arr.length - 2];
   if (prev <= 0) return { action: '观望', cls: 'hold', reason: '前值异常' };
