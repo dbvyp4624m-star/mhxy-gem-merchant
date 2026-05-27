@@ -771,7 +771,7 @@ def regenerate_dashboard(csv_path, date_str, rate_info=None, suggested=None):
 
     # 历史趋势数据
     history = build_history()
-    js_history = json.dumps(history, ensure_ascii=False) if history else "null"
+    js_history = json.dumps(history, ensure_ascii=False) if history else "{}"
 
     # 较昨日变化
     gem_names = [name for _, name in GEMS]
@@ -817,7 +817,7 @@ def regenerate_dashboard(csv_path, date_str, rate_info=None, suggested=None):
 
     # 注入 SUGGESTED_BUY_HISTORY
     buy_history = build_suggested_buy_history()
-    js_buy_hist = json.dumps(buy_history, ensure_ascii=False) if buy_history else "null"
+    js_buy_hist = json.dumps(buy_history, ensure_ascii=False) if buy_history else "{}"
     new_html = re.sub(
         r'const SUGGESTED_BUY_HISTORY = \{.*?\};',
         f'const SUGGESTED_BUY_HISTORY = {js_buy_hist};',
@@ -826,7 +826,7 @@ def regenerate_dashboard(csv_path, date_str, rate_info=None, suggested=None):
 
     # 注入 TRANSACTIONS
     tx_history = build_transactions_history()
-    js_tx = json.dumps(tx_history, ensure_ascii=False) if tx_history else "null"
+    js_tx = json.dumps(tx_history, ensure_ascii=False) if tx_history else "{}"
     new_html = re.sub(
         r'const TRANSACTIONS = \{.*?\};',
         f'const TRANSACTIONS = {js_tx};',
@@ -835,7 +835,7 @@ def regenerate_dashboard(csv_path, date_str, rate_info=None, suggested=None):
 
     # 注入 LEVEL_HISTORY
     level_history = build_level_history()
-    js_level_hist = json.dumps(level_history, ensure_ascii=False) if level_history else "null"
+    js_level_hist = json.dumps(level_history, ensure_ascii=False) if level_history else "{}"
     new_html = re.sub(
         r'const LEVEL_HISTORY = \{.*?\};',
         f'const LEVEL_HISTORY = {js_level_hist};',
