@@ -111,9 +111,29 @@ def check_login(target_id):
     return "退出" in text and "钱包余额" in text
 
 
-def do_login(target_id, email, password, server_id="149", area_id="45"):
-    """自动登录藏宝阁：选择服务器 → 邮箱登录 → 选择第一个角色"""
+def check_captcha(target_id):
+    """检测是否在安全验证页面（易盾验证码 / 手机验证）"""
+    text = eval_js(target_id, "document.body.innerText?.slice(0, 300) || ''")
+    if text and ("安全验证" in str(text) or "点击完成验证" in str(text)):
+        return "yidun"
+    necaptcha = eval_js(target_id, "!!document.getElementById('NECaptchaSafeWindow')")
+    if necaptcha:
+        return "yidun"
+    url = eval_js(target_id, "document.location.href") or ""
+    if "show_mbauth" in url:
+        return "mbauth"
+    return None
+
+
+def do_login(target_id, email=None, password=None, server_id="149", area_id="45"):
+    """安全登录：依赖 Chrome 自动填充，不直接注入凭证（防触发验证码）
+    仅在 cookie 完全过期时使用，需用户已在 Chrome 中保存过密码。"""
     import time as _time
+
+    # 0. 前置检查：是否已在验证码页面
+    if check_captcha(target_id):
+        print("  ⚠ 当前在验证码页面，请先在 Chrome 中手动完成验证")
+        return False
 
     # 1. 导航到登录页面（带服务器参数）
     login_url = (
@@ -125,48 +145,47 @@ def do_login(target_id, email, password, server_id="149", area_id="45"):
     cdp_request(f"/navigate?target={target_id}", method="POST", body=login_url)
     _time.sleep(3)
 
-    # 检查是否已登录（可能 cookie 未过期）
+    if check_captcha(target_id):
+        print("  ⚠ 登录触发了验证码，请手动完成")
+        return False
+
     if check_login(target_id):
         print("  已登录，跳过登录流程")
         return True
 
-    # 2. 点击"邮箱登录"tab
-    print("  选择邮箱登录...")
+    # 2. 点击"邮箱登录"tab，等待 Chrome 自动填充
+    print("  选择邮箱登录（依赖 Chrome 自动填充）...")
     eval_js(target_id, 'document.getElementById("tabBtn2").click(); "done"')
-    _time.sleep(1)
+    _time.sleep(2)
 
-    # 3. 在 iframe 中填写邮箱和密码
-    print("  填写账号密码...")
-    eval_frame(target_id, "dl.reg.163.com", f'''(() => {{
-        const emailEl = document.querySelector('input[name="email"]');
-        if (emailEl) {{
-            emailEl.focus();
-            emailEl.value = "{email}";
-            emailEl.dispatchEvent(new Event('input', {{bubbles: true}}));
-            emailEl.dispatchEvent(new Event('change', {{bubbles: true}}));
-        }}
-        return emailEl ? "email ok" : "no email input";
-    }})()''')
-    _time.sleep(0.3)
+    # 检查 iframe 中是否已自动填充
+    email_filled = eval_frame(target_id, "dl.reg.163.com",
+        'document.querySelector(\'input[name="email"]\')?.value || ""')
+    if email_filled and len(str(email_filled)) > 3:
+        print(f"  Chrome 已自动填充邮箱: {str(email_filled)[:3]}***")
+    else:
+        print("  Chrome 未自动填充，请在 Chrome 中手动登录一次以保存密码")
+        print("  或确保已在 Chrome 密码管理器中保存 cbg 登录凭证")
+        return False
 
-    eval_frame(target_id, "dl.reg.163.com", f'''(() => {{
-        const pwdEl = document.querySelector('input[name="password"]');
-        if (pwdEl) {{
-            pwdEl.focus();
-            pwdEl.value = "{password}";
-            pwdEl.dispatchEvent(new Event('input', {{bubbles: true}}));
-            pwdEl.dispatchEvent(new Event('change', {{bubbles: true}}));
-        }}
-        return pwdEl ? "pwd ok" : "no pwd input";
-    }})()''')
-    _time.sleep(0.5)
+    # 3. 检查登录按钮是否已启用（自动填充后应自动启用）
+    btn_disabled = eval_frame(target_id, "dl.reg.163.com",
+        'document.getElementById("dologin")?.classList.contains("btndisabled")')
+    if btn_disabled:
+        print("  登录按钮未启用，可能密码未填充")
+        return False
 
-    # 4. 点击登录按钮
+    # 4. 点击登录按钮（仅点击，不注入任何值）
     print("  提交登录...")
-    eval_frame(target_id, "dl.reg.163.com", 'document.getElementById("dologin").click(); "clicked"')
+    eval_frame(target_id, "dl.reg.163.com",
+        'document.getElementById("dologin").click(); "clicked"')
     _time.sleep(5)
 
-    # 5. 等待角色选择页面加载，选择第一个角色
+    if check_captcha(target_id):
+        print("  ⚠ 登录触发了验证码，请手动完成")
+        return False
+
+    # 5. 等待角色选择页面
     for attempt in range(10):
         url = eval_js(target_id, "document.location.href") or ""
         if "show_role_select_page" in url:
@@ -176,10 +195,12 @@ def do_login(target_id, email, password, server_id="149", area_id="45"):
             return True
         _time.sleep(2)
     else:
-        print("  警告: 角色选择页未出现")
+        print("  警告: 角色选择页未出现，可能已直接登录")
+        if check_login(target_id):
+            return True
 
-    # 6. 查找第一个角色并点击
-    print("  选择第一个角色...")
+    # 6. 选择第一个角色
+    print("  选择角色...")
     first_role_id = eval_js(target_id, '''(() => {
         const panel = document.getElementById('role_list_panel');
         if (!panel) return null;
@@ -190,51 +211,27 @@ def do_login(target_id, email, password, server_id="149", area_id="45"):
     })()''')
 
     if first_role_id:
-        print(f"  选中角色 ID: {first_role_id}")
         eval_js(target_id, f'document.getElementById("icon_{first_role_id}").click(); "done"')
         _time.sleep(1)
+        nickname = eval_js(target_id,
+            'document.getElementById("select_role_nickname")?.innerText?.trim() || "?"')
+        print(f"  角色: {nickname}")
 
-        # 显示角色信息
-        nickname = eval_js(target_id, '''(() => {
-            const el = document.getElementById('select_role_nickname');
-            return el ? el.innerText.trim() : '?';
-        })()''')
-        print(f"  角色名: {nickname}")
-
-        # 7. 点击"进入"
-        eval_js(target_id, '''(() => {
-            const all = document.querySelectorAll('a');
-            for (const a of all) {
-                if ((a.innerText || '').trim().replace(/\\s+/g, '') === '进入') {
-                    a.click();
-                    return 'clicked';
-                }
+    # 7. 点击"进入"
+    eval_js(target_id, '''(() => {
+        const all = document.querySelectorAll('a');
+        for (const a of all) {
+            if ((a.innerText || '').trim().replace(/\\s+/g, '') === '进入') {
+                a.click(); return 'clicked';
             }
-            return 'not found';
-        })()''')
-        _time.sleep(5)
-    else:
-        print("  警告: 未找到角色列表，尝试直接进入")
-        eval_js(target_id, '''(() => {
-            const all = document.querySelectorAll('a');
-            for (const a of all) {
-                if ((a.innerText || '').trim().replace(/\\s+/g, '') === '进入') {
-                    a.click();
-                    return 'clicked';
-                }
-            }
-            return 'not found';
-        })()''')
-        _time.sleep(5)
+        }
+    })()''')
+    _time.sleep(5)
 
-    # 8. 检查登录结果
-    if check_login(target_id):
-        print("  登录成功!")
-        return True
+    if check_captcha(target_id):
+        print("  ⚠ 登录后触发了验证码")
+        return False
 
-    # 可能还在角色选择页或其他中间页面
-    url = eval_js(target_id, "document.location.href") or ""
-    print(f"  当前 URL: {url}")
     return check_login(target_id)
 
 
@@ -1202,11 +1199,38 @@ def main():
 
     print(f"\n使用 tab: {target_id}")
 
-    # 3. 检查登录状态，未登录则自动登录
+    # 3. 登录状态检查（依赖 Chrome 持久化 cookie，不触发自动登录）
+    # 先检测验证码（若有则阻断）
+    captcha_type = check_captcha(target_id)
+    if captcha_type:
+        print(f"\n⚠ 检测到安全验证页面 ({captcha_type})!")
+        print("  请在 Chrome 中手动完成验证，完成后 cookie 自动持久化，无需重复操作。")
+        return 1
+
+    # 导航到首页让 cookie 生效
+    cdp_request(f"/navigate?target={target_id}", method="POST",
+                body="https://xyq.cbg.163.com/?server_id=149&areaid=45")
+    time.sleep(2)
+
+    captcha_type = check_captcha(target_id)
+    if captcha_type:
+        print(f"\n⚠ 检测到安全验证页面 ({captcha_type})!")
+        print("  请在 Chrome 中手动完成验证后重试。")
+        return 1
+
     if not check_login(target_id):
-        print("未登录，开始自动登录...")
-        if not do_login(target_id, "dhlwukai333@163.com", "Dhl123456"):
-            print("\n错误: 自动登录失败!")
+        # 再试一次：导航到搜索页
+        cdp_request(f"/navigate?target={target_id}", method="POST", body=SEARCH_URL)
+        time.sleep(3)
+        captcha_type = check_captcha(target_id)
+        if captcha_type:
+            print(f"\n⚠ 检测到安全验证页面 ({captcha_type})!")
+            print("  请在 Chrome 中手动完成验证后重试。")
+            return 1
+        if not check_login(target_id):
+            print("\n未登录! 请在 Chrome 中手动登录一次 (cookie 持久化后无需重复):")
+            print("  1. 打开 https://xyq.cbg.163.com")
+            print("  2. 追忆 → 再续前缘 → 邮箱登录 → 选角色 902丨享受")
             return 1
 
     print("登录状态: 已登录 ✓")
@@ -1217,7 +1241,7 @@ def main():
         print("导航到道具搜索页面...")
         cdp_request(f"/navigate?target={target_id}", method="POST",
                     body=SEARCH_URL)
-        time.sleep(3)
+        wait_for_selector(target_id, "#soldList tr,#search_box,.qFilter", timeout=5)
 
     # 4.5 检查收藏列表中的成交
     transactions = check_transactions(target_id, today)
