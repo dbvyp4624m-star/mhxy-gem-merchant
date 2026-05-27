@@ -238,6 +238,188 @@ def do_login(target_id, email, password, server_id="149", area_id="45"):
     return check_login(target_id)
 
 
+def wait_for_selector(target_id, selector, timeout=5):
+    """轮询直到选择器匹配到至少一个元素，替代固定 time.sleep"""
+    interval = 0.2
+    elapsed = 0.0
+    while elapsed < timeout:
+        try:
+            count = eval_js(target_id, f"document.querySelectorAll('{selector}').length")
+            if count and int(count) > 0:
+                return True
+        except:
+            pass
+        time.sleep(interval)
+        elapsed += interval
+    return False
+
+
+def scrape_gem_fast(target_id, gem_value, gem_name, max_level=20):
+    """快速抓取：按等级遍历，DOM 提取 + 收藏合并一趟完成"""
+    print(f"\n{'='*50}")
+    print(f"  快速抓取: {gem_name} (value={gem_value})")
+    print(f"{'='*50}")
+
+    all_data = []
+    empty_streak = 0
+    total_collected = 0
+
+    for lv in range(5, max_level + 1):
+        # 导航到按等级筛选 + 价格升序 URL
+        search_url = (
+            f"https://xyq.cbg.163.com/cgi-bin/query.py?act=search_stone"
+            f"&server_id=149&areaid=45"
+            f"&s_type={gem_value}&equip_level={lv}"
+            f"&query_order=price+ASC&page=1"
+        )
+        nav_ok = cdp_request(f"/navigate?target={target_id}", method="POST", body=search_url)
+
+        if not wait_for_selector(target_id, "#soldList tr", timeout=5):
+            empty_streak += 1
+            if empty_streak >= 3:
+                break
+            continue
+        empty_streak = 0
+
+        # 获取总页数
+        total_pages = 1
+        page_match = eval_js(target_id,
+            '''(() => { const m = document.body.innerText.match(/共(\\d+)页/); return m ? m[1] : null; })()''')
+        if page_match:
+            total_pages = int(page_match)
+
+        # 逐页提取（后续页用完整 URL）
+        level_items = []
+        for page in range(1, total_pages + 1):
+            if page > 1:
+                page_url = (
+                    f"https://xyq.cbg.163.com/cgi-bin/query.py?act=search_stone"
+                    f"&server_id=149&areaid=45"
+                    f"&s_type={gem_value}&equip_level={lv}"
+                    f"&query_order=price+ASC&page={page}"
+                )
+                cdp_request(f"/navigate?target={target_id}", method="POST", body=page_url)
+                if not wait_for_selector(target_id, "#soldList tr", timeout=3):
+                    continue
+
+            page_data_json = eval_js(target_id, f'''(() => {{
+                const rows = document.querySelectorAll("#soldList tr");
+                const items = [];
+                rows.forEach(row => {{
+                    const cells = row.querySelectorAll("td");
+                    if (cells.length < 6) return;
+                    const nameText = (cells[1]?.innerText || "").trim();
+                    if (!nameText.includes("{gem_name}")) return;
+                    const lvMatch = nameText.match(/(\\d+)级/);
+                    if (!lvMatch) return;
+                    const priceText = (cells[3]?.innerText || cells[2]?.innerText || "").trim();
+                    const priceMatch = priceText.match(/[￥¥]([\\d.]+)/);
+                    if (!priceMatch) return;
+                    const collectSpan = row.querySelector("span.equipListCollect");
+                    const orderSn = collectSpan?.getAttribute("data-game_ordersn") || "";
+                    items.push({{
+                        level: parseInt(lvMatch[1]),
+                        price: parseFloat(priceMatch[1]),
+                        order_sn: orderSn
+                    }});
+                }});
+                return JSON.stringify(items);
+            }})()''')
+
+            if page_data_json:
+                try:
+                    items = json.loads(page_data_json)
+                    level_items.extend(items)
+                except json.JSONDecodeError:
+                    pass
+
+        all_data.extend(level_items)
+
+        # 8-12 级：收藏最低价前 3 个
+        if 8 <= lv <= 12 and level_items:
+            lv_sorted = sorted(
+                [d for d in level_items if d.get("order_sn")],
+                key=lambda x: x["price"]
+            )
+            seen = set()
+            collected = 0
+            for item in lv_sorted:
+                sn = item["order_sn"]
+                if sn in seen:
+                    continue
+                seen.add(sn)
+                code = (f"fetch('/cgi-bin/userinfo.py?act=ajax_add_collect"
+                        f"&order_sn={sn}').then(r=>r.json())"
+                        f".then(j=>j.status===1?'ok':'fail')")
+                ok = eval_js(target_id, code)
+                if ok == "ok":
+                    collected += 1
+                    total_collected += 1
+                time.sleep(0.25)
+                if collected >= 3:
+                    break
+
+        pages_str = f" {total_pages}页" if total_pages > 1 else ""
+        fav_str = f" 收藏{min(3, sum(1 for d in level_items if d.get('order_sn')))}个" if 8 <= lv <= 12 else ""
+        print(f"  等级{lv}: {len(level_items)}条{pages_str}{fav_str}")
+
+    if total_collected > 0:
+        print(f"  {gem_name}: 收藏 8-12 级共 {total_collected} 个 listing")
+    print(f"  总计 {gem_name}: {len(all_data)} 条")
+    return all_data
+
+
+def run_self_check(all_results, rate_info=None):
+    """采集后自检：条数合理性、异常价格、数据污染"""
+    print(f"\n{'='*50}")
+    print(f"  数据质量自检")
+    print(f"{'='*50}")
+    issues = []
+
+    for gem_name, data in all_results:
+        if not data:
+            issues.append(f"⚠ {gem_name}: 0条数据!")
+            continue
+
+        by_level = {}
+        for d in data:
+            lv = d["level"]
+            by_level[lv] = by_level.get(lv, []) + [d["price"]]
+
+        levels = sorted(by_level.keys())
+
+        # 检查等级连续性
+        if len(levels) >= 2:
+            for i in range(len(levels) - 1):
+                if levels[i + 1] - levels[i] > 1:
+                    issues.append(f"⚠ {gem_name}: 等级不连续 {levels[i]}→{levels[i+1]}")
+
+        # 检查异常价格 (等级6不应是¥10)
+        for lv, prices in by_level.items():
+            avg_p = sum(prices) / len(prices)
+            min_p = min(prices)
+            # 6级以上宝石价格不应低于 ¥10.00
+            if lv >= 7 and min_p < 11:
+                issues.append(f"⚠ {gem_name} {lv}级: 最低价过低 ¥{min_p:.2f}")
+            # 跨宝石污染检测：红玛瑙/黑宝石/舍利子6级均价不会 <15
+            if gem_name in ("红玛瑙", "黑宝石", "舍利子") and lv >= 6 and avg_p < 15:
+                issues.append(f"⚠ {gem_name} {lv}级: 均价异常低 ¥{avg_p:.2f} (疑似数据污染)")
+
+        print(f"  {gem_name}: {len(data)}条, {len(levels)}个等级 ({levels[0]}-{levels[-1]}级)")
+
+    if rate_info:
+        print(f"  汇率: 1RMB={rate_info.get('mh_per_rmb', '?')}MH")
+
+    if issues:
+        print(f"\n  发现问题 {len(issues)} 个:")
+        for issue in issues:
+            print(f"    {issue}")
+    else:
+        print(f"  自检通过 ✓")
+
+    return len(issues) == 0
+
+
 def scrape_gem(target_id, gem_value, gem_name):
     """抓取单个宝石的所有页面数据"""
     print(f"\n{'='*50}")
@@ -1053,22 +1235,38 @@ def main():
     # 回到道具搜索页面
     cdp_request(f"/navigate?target={target_id}", method="POST",
                 body=SEARCH_URL)
-    time.sleep(5)  # 等待页面完全加载
+    wait_for_selector(target_id, "#soldList tr,#search_box,.qFilter", timeout=5)
 
-    # 5. 逐个抓取宝石数据
+    # 5. 逐个抓取宝石数据（快速模式：按等级遍历 + 收藏合并一趟完成）
+    # 每 3 个宝石换新 tab，防止浏览器状态退化
     all_results = []
-    for gem_value, gem_name in GEMS:
+    for i, (gem_value, gem_name) in enumerate(GEMS):
+        if i > 0 and i % 3 == 0:
+            # 换新 tab
+            new_tab = cdp_request("/new", method="POST", body=SEARCH_URL)
+            if new_tab:
+                target_id = new_tab.get("targetId", target_id)
+                wait_for_selector(target_id, "#soldList tr,#search_box,.qFilter", timeout=5)
+                print(f"\n  切换到新 tab: {target_id}")
+
         try:
-            data = scrape_gem(target_id, gem_value, gem_name)
+            data = scrape_gem_fast(target_id, gem_value, gem_name)
             all_results.append((gem_name, data))
-            # 5.5 收藏 8-12 级最低价前3
-            favorite_top3(target_id, gem_value, gem_name)
         except Exception as e:
             print(f"  抓取 {gem_name} 失败: {e}")
+            # 失败时强制换 tab
+            new_tab = cdp_request("/new", method="POST", body=SEARCH_URL)
+            if new_tab:
+                target_id = new_tab.get("targetId", target_id)
+                wait_for_selector(target_id, "#soldList tr,#search_box,.qFilter", timeout=5)
             all_results.append((gem_name, []))
 
     # 6. 抓取梦幻币汇率
     rate_info = scrape_money_rate(target_id)
+
+    # 6.5 数据自检
+    if not run_self_check(all_results, rate_info):
+        print("\n  ⚠ 自检未通过，请核查数据后重试")
 
     # 7. 保存宝石数据并计算建议收购价
     save_csv_path = os.path.join(OUTPUT_DIR, f"gem_prices_{today}.csv")
