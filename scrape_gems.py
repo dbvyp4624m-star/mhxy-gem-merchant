@@ -490,30 +490,50 @@ def check_transactions(target_id, today):
     return transactions
 
 
-def favorite_top3(target_id, gem_name, all_items):
-    """对每种宝石 8-12 级各收藏价格最低的 3 个 listing（通过 AJAX API）"""
-    from collections import defaultdict
-
-    # 筛选 8-12 级
-    by_level = defaultdict(list)
-    for item in all_items:
-        lv = item["level"]
-        if 8 <= lv <= 12:
-            by_level[lv].append(item)
-
+def favorite_top3(target_id, gem_value, gem_name):
+    """对每种宝石 8-12 级，逐级筛选→按最低价排序→收藏页面上前3个"""
     count = 0
-    for lv in sorted(by_level.keys()):
-        # 按价格排序取前3
-        top3 = sorted(by_level[lv], key=lambda x: x["price"])[:3]
-        for item in top3:
-            sn = item.get("order_sn", "")
-            if not sn:
-                continue
-            code = f"fetch('/cgi-bin/userinfo.py?act=ajax_add_collect&order_sn={sn}').then(r => r.json()).then(j => j.status === 1 ? 'ok' : 'fail')"
-            result = eval_js(target_id, code)
-            if result == "ok":
-                count += 1
-            time.sleep(0.3)
+
+    for lv in range(8, 13):
+        # 设置筛选条件：宝石种类 + 等级
+        code = f'''(() => {{
+            const stoneRadio = [...document.querySelectorAll("input[name=equip_kind]")]
+                .find(r => r.value === "search_stone");
+            if (stoneRadio) {{
+                stoneRadio.checked = true;
+                stoneRadio.dispatchEvent(new Event("change", {{bubbles: true}}));
+            }}
+            document.getElementById("s_stone_type").value = "{gem_value}";
+            document.getElementById("s_stone_level").value = "{lv}";
+            search_equip(1);
+            return "searching...";
+        }})()'''
+        eval_js(target_id, code)
+        time.sleep(2)
+
+        # 从当前页（page 1，默认按价格升序）提取前3个 order_sn 并收藏
+        result = eval_js(target_id, '''(() => {
+            const spans = document.querySelectorAll("span.equipListCollect[data-game_ordersn]:not(.on)");
+            const sns = [];
+            for (const span of spans) {
+                const sn = span.getAttribute("data-game_ordersn");
+                if (sn) sns.push(sn);
+                if (sns.length >= 3) break;
+            }
+            return JSON.stringify(sns);
+        })()''')
+
+        if result:
+            try:
+                sns = json.loads(result)
+            except:
+                sns = []
+            for sn in sns:
+                code = f"fetch('/cgi-bin/userinfo.py?act=ajax_add_collect&order_sn={sn}').then(r => r.json()).then(j => j.status === 1 ? 'ok' : 'fail')"
+                ok = eval_js(target_id, code)
+                if ok == "ok":
+                    count += 1
+                time.sleep(0.3)
 
     if count > 0:
         print(f"  {gem_name}: 收藏 8-12 级共 {count} 个 listing")
@@ -849,7 +869,7 @@ def main():
             data = scrape_gem(target_id, gem_value, gem_name)
             all_results.append((gem_name, data))
             # 5.5 收藏 8-12 级最低价前3
-            favorite_top3(target_id, gem_name, data)
+            favorite_top3(target_id, gem_value, gem_name)
         except Exception as e:
             print(f"  抓取 {gem_name} 失败: {e}")
             all_results.append((gem_name, []))
