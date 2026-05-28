@@ -361,6 +361,26 @@ body {
 .rate-bar .rate-value strong { color: var(--text-primary); font-family: 'DM Mono', monospace; }
 .rate-bar .rate-sep { color: var(--border-light); }
 
+/* ── Money History Table ── */
+.money-history { margin: 24px 0; }
+.money-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 13px; color: var(--text-secondary);
+}
+.money-table th {
+  text-align: left; padding: 10px 14px;
+  background: rgba(212,168,83,0.08);
+  color: var(--gold); font-weight: 600;
+  font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase;
+  border-bottom: 1px solid var(--gold-dim);
+}
+.money-table td {
+  padding: 8px 14px; border-bottom: 1px solid var(--border-light);
+  font-family: 'DM Mono', monospace;
+}
+.money-table tr:last-child td { color: var(--gold); font-weight: 600; }
+.money-table tr:hover td { background: rgba(212,168,83,0.04); }
+
 /* ── Footer ── */
 .footer {
   text-align: center;
@@ -516,6 +536,15 @@ body {
     <span class="rate-value">最低单价 <strong id="rate-unit">--</strong> 元/万两</span>
     <span class="rate-sep">|</span>
     <span class="rate-value">实际汇率(×0.93) <strong id="rate-eff">--</strong> 元/万两</span>
+  </div>
+
+  <!-- Money History Table -->
+  <div class="money-history" id="money-history" style="display:none">
+    <div class="section-title" style="margin-top:0">梦幻币趋势 (3000万为标准)</div>
+    <table class="money-table">
+      <thead><tr><th>日期</th><th>3000万MH (RMB)</th><th>1 RMB = MH</th><th>收MH价 (元/万两)</th></tr></thead>
+      <tbody id="money-tbody"></tbody>
+    </table>
   </div>
 
   <!-- Buy Suggestion Module -->
@@ -1089,13 +1118,15 @@ const HISTORY = {"dates": ["2026-05-24", "2026-05-25", "2026-05-26", "2026-05-27
 const DOD = {"total": "+68", "max_price": "+0"};
 const RATE = {"unit_price": 0.0769, "effective_rate": 0.0715, "mh_per_rmb": 139860};
 const SYNTHESIS = {"_default": {"1": 1, "2": 2, "3": 4, "4": 8, "5": 16, "6": 32, "7": 64, "8": 128, "9": 256, "10": 512, "11": 1024, "12": 2100, "13": 4456, "14": 9680, "15": 21716, "16": 51012, "17": 123740, "18": 312628, "19": 821724, "20": 2392444}, "星辉石": {"1": 1, "2": 3, "3": 9, "4": 27, "5": 81, "6": 243, "7": 729, "8": 2187, "9": 6642, "10": 20898, "11": 69336}};
-const SUGGESTED_BUY = {"太阳石": {"l1_mh": 66871, "ref_level": 6, "levels": {"1": {"buy_mh": 66871, "flag": false}, "2": {"buy_mh": 133742, "flag": false}, "3": {"buy_mh": 267484, "flag": false}, "4": {"buy_mh": 534968, "flag": false}, "5": {"buy_mh": 1069936, "flag": false}, "6": {"buy_mh": 2139872, "flag": false}, "7": {"buy_mh": 4279744, "flag": false}, "8": {"buy_mh": 8559488, "flag": false}, "9": {"buy_mh": 17118976, "flag": false}, "10": {"buy_mh": 34237952, "flag": false}, "11": {"buy_mh": 68475904, "flag": false}, "12": {"buy_mh": 140429100, "flag": false}, "13": {"buy_mh": 297977176, "flag": false}, "14": {"buy_mh": 647311280, "flag": false}, "15": {"buy_mh": 1452170636, "flag": false}, "16": {"buy_mh": 3411223452, "flag": false}, "17": {"buy_mh": 8274617540, "flag": false}, "18": {"buy_mh": 20905746988, "flag": false}, "19": {"buy_mh": 54949505604, "flag": false}, "20": {"buy_mh": 159985122724, "flag": false}}}, "月亮石": {"l1_mh": 53300, "ref_level": 6, "levels": {"1": {"buy_mh": 53300, "flag": false}, "2": {"buy_mh": 106600, "flag": false}, "3": {"buy_mh": 213200, "flag": false}, "4": {"buy_mh": 426400, "flag": false}, "5": {"buy_mh": 852800, "flag": false}, "6": {"buy_mh": 1705600, "flag": false}, "7": {"buy_mh": 3411200, "flag": false}, "8": {"buy_mh": 6822400, "flag": false}, "9": {"buy_mh": 13644800, "flag": false}, "10": {"buy_mh": 27289600, "flag": false}, "11": {"buy_mh": 54579200, "flag": false}, "12": {"buy_mh": 111930000, "flag": false}, "13": {"buy_mh": 237504800, "flag": false}, "14": {"buy_mh": 515944000, "flag": false}, "15": {"buy_mh": 1157462800, "flag": false}, "16": {"buy_mh": 2718939600, "flag": false}, "17": {"buy_mh": 6595342000, "flag": false}, "18": {"buy_mh": 16663072400, "flag": false}, "19": {"buy_mh": 43797889200, "flag": false}, "20": {"buy_mh": 127517265200, "flag": false}}}, "光芒石": {"l1_mh": 29049, "ref_level": 7, "levels": {"1": {"buy_mh": 29049, "flag": false}, "2": {"buy_mh": 58098, "flag": false}, "3": {"buy_mh": 116196, "flag": false}, "4": {"buy_mh": 232392, "flag": false}, "5": {"buy_mh": 464784, "flag": false}, "6": {"buy_mh": 929568, "flag": false}, "7": {"buy_mh": 1859136, "flag": false}, "8": {"buy_mh": 3718272, "flag": true}, "9": {"buy_mh": 7436544, "flag": false}, "10": {"buy_mh": 14873088, "flag": false}, "11": {"buy_mh": 29746176, "flag": false}, "12": {"buy_mh": 61002900, "flag": false}, "13": {"buy_mh": 129442344, "flag": false}, "14": {"buy_mh": 281194320, "flag": false}, "15": {"buy_mh": 630828084, "flag": false}, "16": {"buy_mh": 1481847588, "flag": false}, "17": {"buy_mh": 3594523260, "flag": false}, "18": {"buy_mh": 9081530772, "flag": false}, "19": {"buy_mh": 23870260476, "flag": false}, "20": {"buy_mh": 69498105756, "flag": false}}}, "黑宝石": {"l1_mh": 156870, "ref_level": 5, "levels": {"1": {"buy_mh": 156870, "flag": false}, "2": {"buy_mh": 313740, "flag": false}, "3": {"buy_mh": 627480, "flag": false}, "4": {"buy_mh": 1254960, "flag": false}, "5": {"buy_mh": 2509920, "flag": false}, "6": {"buy_mh": 5019840, "flag": false}, "7": {"buy_mh": 10039680, "flag": false}, "8": {"buy_mh": 20079360, "flag": false}, "9": {"buy_mh": 40158720, "flag": false}, "10": {"buy_mh": 80317440, "flag": false}, "11": {"buy_mh": 160634880, "flag": false}, "12": {"buy_mh": 329427000, "flag": false}, "13": {"buy_mh": 699012720, "flag": false}, "14": {"buy_mh": 1518501600, "flag": false}, "15": {"buy_mh": 3406588920, "flag": false}, "16": {"buy_mh": 8002252440, "flag": false}, "17": {"buy_mh": 19411093800, "flag": false}, "18": {"buy_mh": 49041954360, "flag": false}, "19": {"buy_mh": 128903843880, "flag": false}, "20": {"buy_mh": 375302690280, "flag": false}}}, "红玛瑙": {"l1_mh": 70765, "ref_level": 6, "levels": {"1": {"buy_mh": 70765, "flag": false}, "2": {"buy_mh": 141530, "flag": false}, "3": {"buy_mh": 283060, "flag": false}, "4": {"buy_mh": 566120, "flag": false}, "5": {"buy_mh": 1132240, "flag": false}, "6": {"buy_mh": 2264480, "flag": false}, "7": {"buy_mh": 4528960, "flag": false}, "8": {"buy_mh": 9057920, "flag": false}, "9": {"buy_mh": 18115840, "flag": false}, "10": {"buy_mh": 36231680, "flag": false}, "11": {"buy_mh": 72463360, "flag": false}, "12": {"buy_mh": 148606500, "flag": false}, "13": {"buy_mh": 315328840, "flag": false}, "14": {"buy_mh": 685005200, "flag": false}, "15": {"buy_mh": 1536732740, "flag": false}, "16": {"buy_mh": 3609864180, "flag": false}, "17": {"buy_mh": 8756461100, "flag": false}, "18": {"buy_mh": 22123120420, "flag": false}, "19": {"buy_mh": 58149298860, "flag": false}, "20": {"buy_mh": 169301299660, "flag": false}}}, "舍利子": {"l1_mh": 94406, "ref_level": 5, "levels": {"1": {"buy_mh": 94406, "flag": false}, "2": {"buy_mh": 188812, "flag": false}, "3": {"buy_mh": 377624, "flag": false}, "4": {"buy_mh": 755248, "flag": false}, "5": {"buy_mh": 1510496, "flag": false}, "6": {"buy_mh": 3020992, "flag": false}, "7": {"buy_mh": 6041984, "flag": false}, "8": {"buy_mh": 12083968, "flag": false}, "9": {"buy_mh": 24167936, "flag": false}, "10": {"buy_mh": 48335872, "flag": false}, "11": {"buy_mh": 96671744, "flag": false}, "12": {"buy_mh": 198252600, "flag": false}, "13": {"buy_mh": 420673136, "flag": false}, "14": {"buy_mh": 913850080, "flag": false}, "15": {"buy_mh": 2050120696, "flag": false}, "16": {"buy_mh": 4815838872, "flag": false}, "17": {"buy_mh": 11681798440, "flag": false}, "18": {"buy_mh": 29513958968, "flag": false}, "19": {"buy_mh": 77575675944, "flag": false}, "20": {"buy_mh": 225861068264, "flag": false}}}, "星辉石": {"l1_mh": 147614, "ref_level": 5, "levels": {"1": {"buy_mh": 147614, "flag": false}, "2": {"buy_mh": 442842, "flag": false}, "3": {"buy_mh": 1328526, "flag": false}, "4": {"buy_mh": 3985578, "flag": false}, "5": {"buy_mh": 11956734, "flag": false}, "6": {"buy_mh": 35870202, "flag": false}, "7": {"buy_mh": 107610606, "flag": false}, "8": {"buy_mh": 322831818, "flag": false}, "9": {"buy_mh": 980452188, "flag": false}, "10": {"buy_mh": 3084837372, "flag": false}, "11": {"buy_mh": 10234964304, "flag": false}}}, "翡翠石": {"l1_mh": 20651, "ref_level": 8, "levels": {"1": {"buy_mh": 20651, "flag": false}, "2": {"buy_mh": 41302, "flag": false}, "3": {"buy_mh": 82604, "flag": false}, "4": {"buy_mh": 165208, "flag": false}, "5": {"buy_mh": 330416, "flag": false}, "6": {"buy_mh": 660832, "flag": false}, "7": {"buy_mh": 1321664, "flag": false}, "8": {"buy_mh": 2643328, "flag": false}, "9": {"buy_mh": 5286656, "flag": false}, "10": {"buy_mh": 10573312, "flag": false}, "11": {"buy_mh": 21146624, "flag": false}, "12": {"buy_mh": 43367100, "flag": false}, "13": {"buy_mh": 92020856, "flag": false}, "14": {"buy_mh": 199901680, "flag": false}, "15": {"buy_mh": 448457116, "flag": false}, "16": {"buy_mh": 1053448812, "flag": false}, "17": {"buy_mh": 2555354740, "flag": false}, "18": {"buy_mh": 6456080828, "flag": false}, "19": {"buy_mh": 16969422324, "flag": false}, "20": {"buy_mh": 49406361044, "flag": false}}}};
+const SUGGESTED_BUY = {};
 const GEMS = Object.keys(DATA);
 
 const SUGGESTED_BUY_HISTORY = {"dates": [], "gems": {"太阳石": [65106, 67982, 67247, 66871], "月亮石": [53856, 53485, 53600, 53300], "光芒石": [27926, 27651, 29658, 29049], "黑宝石": [159574, 157926, 157279, 156870], "红玛瑙": [74960, 74025, 72943, 70765], "舍利子": [95745, 94724, 94937, 94406], "星辉石": [151300, 148252, 150023, 147614], "翡翠石": [21223, 20738, 20767, 20651]}};
 
 const TRANSACTIONS = {"dates": ["2026-05-28"], "gems": {"太阳石": {"8": [69.0], "9": [145.96], "10": [285.0], "11": [null], "12": [null]}, "月亮石": {"8": [null], "9": [null], "10": [null], "11": [null], "12": [null]}, "光芒石": {"8": [null], "9": [null], "10": [null], "11": [null], "12": [null]}, "黑宝石": {"8": [162.88], "9": [null], "10": [null], "11": [null], "12": [null]}, "红玛瑙": {"8": [null], "9": [null], "10": [null], "11": [null], "12": [null]}, "舍利子": {"8": [96.99], "9": [null], "10": [null], "11": [null], "12": [null]}, "星辉石": {"8": [null], "9": [null], "10": [null], "11": [null], "12": [null]}, "翡翠石": {"8": [null], "9": [null], "10": [null], "11": [null], "12": [null]}}};
 const LEVEL_HISTORY = {"dates": ["2026-05-24", "2026-05-25", "2026-05-26", "2026-05-27", "2026-05-28"], "levels": {"5": {"太阳石": [10.0, 10.0, 10.0, 10.0, 10.0], "月亮石": [10.0, 10.0, 10.0, 10.0, 10.0], "光芒石": [10.0, 10.0, 10.0, 10.0, 10.0], "黑宝石": [20.55, 20.0, 19.99, 19.88, 19.94], "红玛瑙": [10.0, 10.0, 10.0, 10.0, 10.0], "舍利子": [11.99, 12.0, 11.99, 12.0, 12.0], "星辉石": [97.77, 96.0, 95.0, 96.0, 94.99], "翡翠石": [10.0, 10.0, 10.0, 10.0, 10.0]}, "6": {"太阳石": [16.66, 16.32, 17.21, 17.0, 17.0], "月亮石": [13.38, 13.5, 13.54, 13.55, 13.55], "光芒石": [10.0, 10.0, 10.0, 10.0, 10.0], "黑宝石": [40.05, 40.5, 40.8, 40.75, 40.0], "红玛瑙": [18.8, 18.79, 18.74, 18.44, 17.99], "舍利子": [24.99, 24.22, 24.79, 24.7, 24.0], "星辉石": [294.0, 294.68, 292.8, 292.5, 292.49], "翡翠石": [10.0, 10.0, 10.0, 10.0, 10.0]}, "7": {"太阳石": [34.49, 34.0, 34.5, 34.5, 34.87], "月亮石": [28.0, 28.0, 28.99, 27.88, 27.5], "光芒石": [14.88, 14.0, 14.0, 14.88, 14.77], "黑宝石": [82.0, 82.0, 82.88, 81.88, 82.88], "红玛瑙": [38.65, 38.48, 38.0, 37.88, 38.0], "舍利子": [48.99, 48.0, 48.5, 47.88, 47.5], "星辉石": [906.0, 905.0, 905.0, 905.0, 905.0], "翡翠石": [10.85, 10.85, 10.88, 10.88, 10.88]}, "8": {"太阳石": [67.0, 68.0, 68.88, 69.0, 69.0], "月亮石": [57.8, 57.8, 56.9, 56.0, 56.0], "光芒石": [28.99, 27.88, 28.0, 26.0, 26.0], "黑宝石": [162.0, 162.0, 164.0, 162.0, 164.0], "红玛瑙": [78.0, 78.0, 77.5, 76.99, 76.97], "舍利子": [98.0, 98.0, 96.99, 96.99, 97.0], "星辉石": [2780.0, 2779.0, 2740.0, 2730.0, 2729.0], "翡翠石": [21.3, 21.28, 21.0, 21.0, 21.0]}, "9": {"太阳石": [146.0, 146.0, 145.99, 145.96, 145.98], "月亮石": [115.0, 115.0, 112.0, 112.0, 112.0], "光芒石": [60.0, 60.0, 60.0, 59.98, 58.0], "黑宝石": [345.0, 339.0, 335.0, 339.0, 339.0], "红玛瑙": [167.0, 167.0, 163.0, 161.98, 159.99], "舍利子": [209.8, 209.88, 209.88, 209.0, 209.0], "星辉石": [8650.0, 8650.0, 8600.0, 8600.0, null], "翡翠石": [44.64, 44.64, 44.99, 42.8, 42.8]}, "10": {"太阳石": [290.0, 285.0, 285.0, 285.0, 285.0], "月亮石": [238.88, 238.88, 237.88, 237.4, 236.66], "光芒石": [112.0, 115.0, 118.88, 118.85, 118.8], "黑宝石": [699.85, 699.85, 690.0, 690.0, 690.0], "红玛瑙": [325.0, 325.0, 324.55, 324.85, 323.88], "舍利子": [418.0, 417.9, 417.98, 417.85, 416.0], "星辉石": [26999.0, null, null, 26999.0, 26999.0], "翡翠石": [88.0, 88.0, 86.88, 87.0, 86.88]}, "11": {"太阳石": [587.98, 587.98, 587.98, 587.98, 587.98], "月亮石": [484.0, 482.9, 475.9, 473.9, 470.9], "光芒石": [238.0, 238.0, 249.88, 249.88, 248.88], "黑宝石": [1497.0, 1497.0, 1495.0, 1495.0, null], "红玛瑙": [674.0, 673.0, 673.0, 673.0, 672.88], "舍利子": [830.0, 830.0, 830.0, 830.0, null], "星辉石": [null, null, null, null, null], "翡翠石": [193.0, 192.98, 192.98, 192.98, 192.98]}, "12": {"太阳石": [1335.0, 1335.0, 1335.0, 1335.0, null], "月亮石": [1102.0, 1101.0, 1073.0, 1073.0, 1073.0], "光芒石": [527.0, 525.98, 525.98, 523.0, 523.0], "黑宝石": [3045.0, 3043.0, 3042.0, 3042.0, 3042.0], "红玛瑙": [1407.0, 1406.0, 1406.0, 1406.0, 1405.0], "舍利子": [1688.0, 1688.0, 1677.0, 1677.0, 1677.0], "星辉石": [null, null, null, null, null], "翡翠石": [410.0, 400.0, 400.0, 400.0, 400.0]}, "13": {"太阳石": [2799.0, 2798.0, 2798.0, 2798.0, 2798.0], "月亮石": [2329.0, 2327.0, 2326.0, 2326.0, 2326.0], "光芒石": [1100.0, 1100.0, 1100.0, 1100.0, 1100.0], "黑宝石": [6799.0, 6750.0, 6750.0, 6750.0, 6750.0], "红玛瑙": [3139.0, 3139.0, 3139.0, 3139.0, 3139.0], "舍利子": [3799.0, 3799.0, 3798.0, 3798.0, 3798.0], "星辉石": [null, null, null, null, null], "翡翠石": [970.0, 967.0, 967.0, 967.0, 967.0]}, "14": {"太阳石": [5999.0, 5999.0, 5999.0, 5999.0, 5999.0], "月亮石": [5499.0, 5499.0, 5499.0, 5499.0, 5499.0], "光芒石": [2799.0, null, null, 2799.0, 2799.0], "黑宝石": [13999.0, 13999.0, 13999.0, 13999.0, 13999.0], "红玛瑙": [null, 7199.0, 7199.0, 7199.0, 7199.0], "舍利子": [null, null, null, null, null], "星辉石": [null, null, null, null, null], "翡翠石": [2150.0, 2150.0, 2150.0, 2150.0, 2150.0]}, "15": {"太阳石": [null, null, null, null, null], "月亮石": [null, null, null, null, null], "光芒石": [5799.0, 5799.0, 5799.0, null, 5799.0], "黑宝石": [null, null, null, null, null], "红玛瑙": [15999.0, 15999.0, 15999.0, 15999.0, 15999.0], "舍利子": [null, null, null, null, null], "星辉石": [null, null, null, null, null], "翡翠石": [4666.0, null, 4666.0, 4666.0, 4666.0]}}};
+
+const MONEY_HISTORY = [{"date": "2026-05-25", "unit_price": 0.0758, "effective_rate": 0.0705, "mh_per_rmb": 141844, "rmb_3000w": 211.5}, {"date": "2026-05-26", "unit_price": 0.0766, "effective_rate": 0.0712, "mh_per_rmb": 140449, "rmb_3000w": 213.6}, {"date": "2026-05-27", "unit_price": 0.0765, "effective_rate": 0.0711, "mh_per_rmb": 140647, "rmb_3000w": 213.3}, {"date": "2026-05-28", "unit_price": 0.0769, "effective_rate": 0.0715, "mh_per_rmb": 139860, "rmb_3000w": 214.5}];
 
 // ── Buy Summary Cards ──
 (function() {
@@ -1365,6 +1396,22 @@ function getAdvice(gemName, l1Mh, hist) {
   document.getElementById('rate-mh').textContent = RATE.mh_per_rmb.toLocaleString();
   document.getElementById('rate-unit').textContent = RATE.unit_price.toFixed(4);
   document.getElementById('rate-eff').textContent = RATE.effective_rate.toFixed(4);
+})();
+
+// ── Money History Table ──
+(function() {
+  if (!MONEY_HISTORY || !MONEY_HISTORY.length) return;
+  document.getElementById('money-history').style.display = '';
+  const tbody = document.getElementById('money-tbody');
+  MONEY_HISTORY.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + row.date.substring(5) + '</td>' +
+      '<td>¥' + row.rmb_3000w.toFixed(1) + '</td>' +
+      '<td>' + row.mh_per_rmb.toLocaleString() + '</td>' +
+      '<td>' + row.unit_price.toFixed(4) + '</td>';
+    tbody.appendChild(tr);
+  });
 })();
 
 // ── Trend Charts ──

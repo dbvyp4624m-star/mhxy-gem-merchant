@@ -34,6 +34,7 @@ GEMS = [
     ("4244", "星辉石"),
     ("4249", "翡翠石"),
 ]
+GEM_NAMES = {name for _, name in GEMS}
 
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
@@ -252,21 +253,6 @@ def do_login(target_id, email, password, server_id="149", area_id="45"):
     return check_login(target_id)
 
 
-def wait_for_selector(target_id, selector, timeout=5):
-    """轮询直到选择器匹配到至少一个元素，替代固定 time.sleep"""
-    interval = 0.2
-    elapsed = 0.0
-    while elapsed < timeout:
-        try:
-            count = eval_js(target_id, f"document.querySelectorAll('{selector}').length")
-            if count and int(count) > 0:
-                return True
-        except:
-            pass
-        time.sleep(interval)
-        elapsed += interval
-    return False
-
 
 def scrape_gem(target_id, gem_value, gem_name):
     """抓取单个宝石的所有页面数据"""
@@ -310,8 +296,11 @@ def scrape_gem(target_id, gem_value, gem_name):
     })()''')
     if page_match:
         total_pages = int(page_match)
+    else:
+        print(f"  ⚠ 无法检测总页数，默认使用 {total_pages} 页 (可能只抓取第一页)")
 
     all_data = []
+    empty_streak = 0
 
     for page in range(1, total_pages + 1):
         print(f"  抓取第 {page}/{total_pages} 页...", end=" ")
@@ -378,8 +367,15 @@ def scrape_gem(target_id, gem_value, gem_name):
                 page_data = json.loads(page_data_json) if isinstance(page_data_json, str) else page_data_json
                 all_data.extend(page_data)
                 print(f"获取 {len(page_data)} 条")
+                empty_streak = 0
             except json.JSONDecodeError:
                 print(f"JSON 解析失败: {page_data_json[:100]}")
+        else:
+            empty_streak += 1
+            print(f"无数据 (连续 {empty_streak} 页)")
+            if empty_streak >= 2:
+                print(f"  提前终止: 连续 {empty_streak} 页无数据")
+                break
 
     print(f"  总计 {gem_name}: {len(all_data)} 条")
     return all_data
@@ -445,7 +441,7 @@ def scrape_money_rate(target_id):
     return {"unit_price": avg_unit, "effective_rate": effective, "mh_per_rmb": mh_per_rmb}
 
 
-def compute_suggested_buy(data, rate_info):
+def compute_suggested_buy(data, rate_info, verbose=True):
     """计算每种宝石的一级建议收购价(梦幻币)，含10%利润。
     优先使用最低的"健康"等级：该等级最低价 > ¥11 且与相邻等级
     价格比符合合成倍率(±12%)，说明定价自然、未被地板价扭曲。
@@ -516,7 +512,8 @@ def compute_suggested_buy(data, rate_info):
             levels_out[lv_str] = lv_entry
 
         suggested[gem_name] = {"l1_mh": l1_mh, "ref_level": ref_level, "levels": levels_out}
-        print(f"  {gem_name}: 建议收购 {l1_mh} MH/级 (参考{ref_level}级, 已留10%利润)")
+        if verbose:
+            print(f"  {gem_name}: 建议收购 {l1_mh} MH/级 (参考{ref_level}级, 已留10%利润)")
 
     return suggested
 
@@ -569,19 +566,41 @@ def build_suggested_buy_history():
                 }
             data[name] = {"levels": lv_info}
 
-        suggested = compute_suggested_buy(data, rate_info)
-        dates.append(date_str)
+        suggested = compute_suggested_buy(data, rate_info, verbose=False)
         for name in gem_names:
             gem_series[name].append(suggested.get(name, {}).get("l1_mh", 0))
 
     return {"dates": dates, "gems": dict(gem_series)}
 
 
+def build_money_history():
+    """从 money_rate.csv 构建梦幻币汇率历史趋势数据"""
+    rate_path = os.path.join(OUTPUT_DIR, "money_rate.csv")
+    if not os.path.exists(rate_path):
+        return None
+
+    history = []
+    with open(rate_path, encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            unit_price = float(row["最低单价(元/万两)"])
+            effective_rate = float(row["实际汇率(×0.93)"])
+            mh_per_rmb = int(row["1RMB=MH"])
+            history.append({
+                "date": row["日期"],
+                "unit_price": round(unit_price, 4),
+                "effective_rate": round(effective_rate, 4),
+                "mh_per_rmb": mh_per_rmb,
+                "rmb_3000w": round(3000 * effective_rate, 1),
+            })
+    return history
+
+
 def check_transactions(target_id, today):
-    """检查收藏列表中"买家取走"的 item，记录成交价并删除收藏"""
+    """检查收藏列表中"买家取走"的 item，记录成交价，然后清理旧收藏腾出空间"""
     transactions = []
+    deleted_count = 0
     print(f"\n{'='*50}")
-    print(f"  检查收藏列表成交状态...")
+    print(f"  检查收藏列表 + 清理旧收藏...")
     print(f"{'='*50}")
 
     # 导航到收藏列表
@@ -591,33 +610,32 @@ def check_transactions(target_id, today):
 
     page = 1
     while True:
-        # 解析当前页
+        # 解析当前页（列结构: 0=复选框 1=图片 2=物品名 3=等级 4=金额 5=状态 6=归属 7=提醒价 8=操作）
         code = '''(() => {
             const rows = document.querySelectorAll('#soldList tr');
             const items = [];
             rows.forEach(row => {
                 const cells = row.querySelectorAll('td');
-                if (cells.length < 8) return;
-                const nameText = (cells[1]?.innerText || '').trim();
-                const lvMatch = nameText.match(/(\\d+)级/);
-                const gemName = nameText.replace(/\\s*\\d+级.*/, '').trim();
-                const statusText = (cells[4]?.innerText || '').trim();
-                const priceText = (cells[3]?.innerText || '').trim();
-                const priceMatch = priceText.match(/[￥¥]([\\d.]+)/);
-                const delLink = cells[7]?.querySelector('a[href*=\"delete_collect\"]');
+                if (cells.length < 9) return;
+                const gemName = (cells[2]?.innerText || '').trim();
+                const levelText = (cells[3]?.innerText || '').trim();
+                const lvMatch = levelText.match(/^(\\d+)$/);
+                const statusText = (cells[5]?.innerText || '').trim();
+                const priceText = (cells[4]?.innerText || '').trim();
+                const priceMatch = priceText.match(/[￥¥]([\\d,]+(?:\\.\\d+)?)/);
+                const delLink = cells[8]?.querySelector('a[href*=\"delete_collect\"]');
                 const href = delLink?.getAttribute('href') || '';
                 const snMatch = href.match(/order_sn=([\\d_]+)/);
-                if (lvMatch && priceMatch && snMatch) {
+                if (lvMatch && snMatch) {
                     items.push({
                         gem: gemName,
                         level: parseInt(lvMatch[1]),
-                        price: parseFloat(priceMatch[1]),
+                        price: priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0,
                         status: statusText,
                         order_sn: snMatch[1]
                     });
                 }
             });
-            // 检查是否有下一页
             const hasNext = document.querySelector('.pages a[href*=\"page=' + ''' + str(page + 1) + ''' + '\"]') !== null;
             const totalPages = (() => { const m = document.body.innerText.match(/共(\\d+)页/); return m ? parseInt(m[1]) : 1; })();
             return JSON.stringify({items: items, hasNext: hasNext, totalPages: totalPages});
@@ -627,7 +645,7 @@ def check_transactions(target_id, today):
             break
         try:
             data = json.loads(result)
-        except:
+        except Exception:
             break
 
         page_items = data.get("items", [])
@@ -635,16 +653,14 @@ def check_transactions(target_id, today):
 
         for item in page_items:
             status = item["status"]
-            if "买家取走" in status:
+            if "买家取走" in status and item["gem"] in GEM_NAMES:
                 transactions.append(item)
                 print(f"  成交: {item['gem']} {item['level']}级 ¥{item['price']}")
-                # 删除已成交收藏
+            # 删除已成交和已失效的收藏，保留"上架中"的
+            if "买家取走" in status or "已失效" in status:
                 del_code = f"fetch('/cgi-bin/userinfo.py?act=ajax_del_collect&order_sn={item['order_sn']}')"
                 eval_js(target_id, del_code)
-                time.sleep(0.3)
-            elif "已失效" in status:
-                del_code = f"fetch('/cgi-bin/userinfo.py?act=ajax_del_collect&order_sn={item['order_sn']}')"
-                eval_js(target_id, del_code)
+                deleted_count += 1
                 time.sleep(0.3)
 
         if page >= total_pages:
@@ -653,48 +669,164 @@ def check_transactions(target_id, today):
         eval_js(target_id, f"goto_page({page})")
         time.sleep(2)
 
-    print(f"  共发现 {len(transactions)} 笔成交")
+    print(f"  共发现 {len(transactions)} 笔成交，清理 {deleted_count} 个旧收藏")
     return transactions
 
 
-def favorite_top3(target_id, gem_value, gem_name):
-    """对每种宝石 8-12 级，逐级筛选→价格从低到高排序→收藏前3个"""
-    count = 0
+def get_collect_limit(gem_name, lv):
+    """返回每种宝石每个等级的收藏上限"""
+    if gem_name == "星辉石":
+        return 1 if lv == 8 else 3  # 5-7级=3, 8级=1
+    return 1 if lv >= 11 else 3  # 8-10级=3, 11-12级=1
 
-    for lv in range(8, 13):
-        # 搜索指定宝石+等级，加上价格升序参数
-        search_url = (
-            f"https://xyq.cbg.163.com/cgi-bin/query.py?act=search_stone"
-            f"&server_id=149&areaid=45"
-            f"&s_type={gem_value}&equip_level={lv}"
-            f"&query_order=price+ASC&page=1"
-        )
-        cdp_request(f"/navigate?target={target_id}", method="POST", body=search_url)
+
+def prune_collections(target_id):
+    """收藏后裁剪：每个 gem+level 只保留最便宜的 N 个，删除贵的。
+    确保始终优先收藏价格最低的宝石。"""
+    deleted = 0
+    print(f"\n{'='*50}")
+    print(f"  裁剪收藏: 保留最低价...")
+    print(f"{'='*50}")
+
+    cdp_request(f"/navigate?target={target_id}", method="POST", body=COLLECT_URL)
+    time.sleep(2)
+
+    # 收集所有收藏项
+    all_items = []
+    page = 1
+    while True:
+        code = '''(() => {
+            const rows = document.querySelectorAll('#soldList tr');
+            const items = [];
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('td');
+                if (cells.length < 9) return;
+                const gemName = (cells[2]?.innerText || '').trim();
+                const levelText = (cells[3]?.innerText || '').trim();
+                const lvMatch = levelText.match(/^(\\d+)$/);
+                const priceText = (cells[4]?.innerText || '').trim();
+                const priceMatch = priceText.match(/[￥¥]([\\d,]+(?:\\.\\d+)?)/);
+                const delLink = cells[8]?.querySelector('a[href*=\"delete_collect\"]');
+                const href = delLink?.getAttribute('href') || '';
+                const snMatch = href.match(/order_sn=([\\d_]+)/);
+                if (lvMatch && priceMatch && snMatch) {
+                    items.push({
+                        gem: gemName,
+                        level: parseInt(lvMatch[1]),
+                        price: parseFloat(priceMatch[1].replace(/,/g, '')),
+                        order_sn: snMatch[1]
+                    });
+                }
+            });
+            const totalPages = (() => { const m = document.body.innerText.match(/共(\\d+)页/); return m ? parseInt(m[1]) : 1; })();
+            return JSON.stringify({items: items, totalPages: totalPages});
+        })()'''
+        result = eval_js(target_id, code)
+        if not result:
+            break
+        try:
+            data = json.loads(result)
+        except Exception:
+            break
+
+        all_items.extend(data.get("items", []))
+        total_pages = data.get("totalPages", 1)
+        if page >= total_pages:
+            break
+        page += 1
+        eval_js(target_id, f"goto_page({page})")
         time.sleep(2)
 
-        # 从当前页提取前3个未收藏的 order_sn
-        result = eval_js(target_id, '''(() => {
+    # 按 (gem, level) 分组，按价格升序，超出限额的删除
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for item in all_items:
+        if item["gem"] in GEM_NAMES:
+            groups[(item["gem"], item["level"])].append(item)
+
+    for (gem_name, lv), items in groups.items():
+        limit = get_collect_limit(gem_name, lv)
+        if len(items) <= limit:
+            continue
+        # 按价格升序，保留前 limit 个，删除后面的
+        items.sort(key=lambda x: x["price"])
+        to_delete = items[limit:]
+        for item in to_delete:
+            del_code = f"fetch('/cgi-bin/userinfo.py?act=ajax_del_collect&order_sn={item['order_sn']}')"
+            eval_js(target_id, del_code)
+            deleted += 1
+            time.sleep(0.3)
+        print(f"  {gem_name} {lv}级: 保留 {limit}/{len(items)} 个, 删除 {len(to_delete)} 个")
+
+    print(f"  裁剪完成: 共删除 {deleted} 个高价收藏")
+    return deleted
+
+
+def favorite_top3(target_id, gem_value, gem_name):
+    """对每种宝石逐级筛选→价格从低到高排序→收藏。
+    普通宝石 8-12 级: 8-10 级各 3 个, 11-12 级各 1 个。
+    星辉石 5-8 级: 5-7 级各 3 个, 8 级 1 个。"""
+    count = 0
+
+    if gem_name == "星辉石":
+        levels = range(5, 9)  # 5-8
+    else:
+        levels = range(8, 13)  # 8-12
+
+    for lv in levels:
+        is_high = (gem_name == "星辉石" and lv == 8) or (gem_name != "星辉石" and lv >= 11)
+        limit = 1 if is_high else 3
+
+        # 使用 DOM 表单操作 + search_equip(1)（和 scrape_gem 一致），
+        # 不能直接导航 query.py URL——会返回跳转提示安全页面而非搜索结果
+        code = f'''(() => {{
+            const stoneRadio = [...document.querySelectorAll("input[name=equip_kind]")]
+                .find(r => r.value === "search_stone");
+            if (stoneRadio) {{
+                stoneRadio.checked = true;
+                stoneRadio.dispatchEvent(new Event("change", {{bubbles: true}}));
+            }}
+            document.getElementById("s_stone_type").value = "{gem_value}";
+            document.getElementById("s_stone_level").value = "{lv}";
+            // 设置排序为价格升序（默认综合排序不会返回最低价）
+            const sortSel = document.getElementById("s_query_order") || document.querySelector("select[name=query_order]");
+            if (sortSel) sortSel.value = "price ASC";
+            search_equip(1);
+            return "searching...";
+        }})()'''
+        eval_js(target_id, code)
+        time.sleep(2)
+
+        # 从当前页提取未收藏的 order_sn，数量按等级决定
+        result = eval_js(target_id, f'''(() => {{
             const spans = document.querySelectorAll("span.equipListCollect[data-game_ordersn]:not(.on)");
             const sns = [];
-            for (const span of spans) {
+            for (const span of spans) {{
                 const sn = span.getAttribute("data-game_ordersn");
                 if (sn) sns.push(sn);
-                if (sns.length >= 3) break;
-            }
+                if (sns.length >= {limit}) break;
+            }}
             return JSON.stringify(sns);
-        })()''')
+        }})()''')
 
+        lv_count = 0
         if result:
             try:
                 sns = json.loads(result)
-            except:
+            except Exception:
                 sns = []
             for sn in sns:
                 code = f"fetch('/cgi-bin/userinfo.py?act=ajax_add_collect&order_sn={sn}').then(r => r.json()).then(j => j.status === 1 ? 'ok' : 'fail')"
                 ok = eval_js(target_id, code)
                 if ok == "ok":
                     count += 1
+                    lv_count += 1
                 time.sleep(0.3)
+
+        if lv_count > 0:
+            print(f"    {gem_name} {lv}级: 收藏 {lv_count} 个")
+        else:
+            print(f"    {gem_name} {lv}级: 无可收藏项 ⚠")
 
     if count > 0:
         print(f"  {gem_name}: 收藏 8-12 级共 {count} 个 listing")
@@ -985,6 +1117,15 @@ def regenerate_dashboard(csv_path, date_str, rate_info=None, suggested=None):
         new_html,
     )
 
+    # 注入 MONEY_HISTORY (梦幻币汇率趋势)
+    money_history = build_money_history()
+    js_money_hist = json.dumps(money_history, ensure_ascii=False) if money_history else "[]"
+    new_html = re.sub(
+        r'const MONEY_HISTORY = \[.*?\];',
+        f'const MONEY_HISTORY = {js_money_hist};',
+        new_html,
+    )
+
     # 注入 TRANSACTIONS
     tx_history = build_transactions_history()
     js_tx = json.dumps(tx_history, ensure_ascii=False) if tx_history else "{}"
@@ -1014,17 +1155,31 @@ def regenerate_dashboard(csv_path, date_str, rate_info=None, suggested=None):
 
 
 def git_push(date_str):
-    """推送更新到 GitHub Pages"""
+    """推送更新到 GitHub Pages (含重试)"""
     import subprocess
     repo_dir = os.path.dirname(os.path.abspath(__file__))
     try:
         subprocess.run(["git", "-C", repo_dir, "add", "dashboard.html", "index.html"], check=True, capture_output=True)
         subprocess.run(["git", "-C", repo_dir, "add", "data/"], check=True, capture_output=True)
         subprocess.run(["git", "-C", repo_dir, "commit", "-m", f"每日更新: {date_str}"], check=True, capture_output=True)
-        subprocess.run(["git", "-C", repo_dir, "push", "origin", "main"], check=True, capture_output=True)
-        print("已推送到 GitHub Pages")
     except subprocess.CalledProcessError as e:
-        print(f"Git push 失败: {e.stderr.decode() if e.stderr else e}")
+        print(f"Git commit 失败: {e.stderr.decode() if e.stderr else e}")
+        return
+
+    # push 重试: 最多 3 次，指数退避
+    for attempt in range(1, 4):
+        try:
+            subprocess.run(["git", "-C", repo_dir, "push", "origin", "main"], check=True, capture_output=True)
+            print("已推送到 GitHub Pages")
+            return
+        except subprocess.CalledProcessError as e:
+            err = e.stderr.decode() if e.stderr else str(e)
+            if attempt < 3:
+                wait = 2 ** attempt
+                print(f"Git push 失败 (尝试 {attempt}/3): {err[:100]}，{wait}s 后重试...")
+                time.sleep(wait)
+            else:
+                print(f"Git push 最终失败 (已重试 3 次): {err[:200]}")
 
 
 def main():
@@ -1074,10 +1229,10 @@ def main():
                 print(f"\n⚠ 检测到安全验证页面 ({captcha_type})! 请在 Chrome 中手动完成验证后重试。")
                 return 1
             if not check_login(target_id):
-                print("\n未登录! 请在 Chrome 中手动登录 (cookie 持久化后无需重复):")
-                print("  1. 打开 https://xyq.cbg.163.com")
-                print("  2. 追忆 → 再续前缘 → 邮箱登录 → 选角色 902丨享受")
-                return 1
+                print("\nCookie 已过期，启动自动登录...")
+                if not do_login(target_id, "dhlwukai333@163.com", "Dhl123456"):
+                    print("自动登录失败! 请手动检查.")
+                    return 1
 
     print("登录状态: 已登录 ✓")
 
@@ -1109,15 +1264,24 @@ def main():
 
     # 5. 逐个抓取宝石数据
     all_results = []
+    total_favorited = 0
     for gem_value, gem_name in GEMS:
         try:
             data = scrape_gem(target_id, gem_value, gem_name)
             all_results.append((gem_name, data))
             # 5.5 收藏 8-12 级最低价前3
-            favorite_top3(target_id, gem_value, gem_name)
+            fav_count = favorite_top3(target_id, gem_value, gem_name)
+            total_favorited += fav_count
         except Exception as e:
             print(f"  抓取 {gem_name} 失败: {e}")
             all_results.append((gem_name, []))
+
+    print(f"\n  收藏汇总: 共收藏 {total_favorited} 个 listing (8-10级各3个 + 11-12级各1个)")
+    if total_favorited == 0:
+        print(f"  ⚠ 警告: 收藏数为 0! 请检查收藏 API 是否正常")
+
+    # 5.6 裁剪收藏：每 gem+level 只保留最便宜的 N 个
+    prune_collections(target_id)
 
     # 6. 抓取梦幻币汇率
     rate_info = scrape_money_rate(target_id)
