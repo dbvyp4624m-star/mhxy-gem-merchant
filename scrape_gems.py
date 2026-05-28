@@ -125,15 +125,9 @@ def check_captcha(target_id):
     return None
 
 
-def do_login(target_id, email=None, password=None, server_id="149", area_id="45"):
-    """安全登录：依赖 Chrome 自动填充，不直接注入凭证（防触发验证码）
-    仅在 cookie 完全过期时使用，需用户已在 Chrome 中保存过密码。"""
+def do_login(target_id, email, password, server_id="149", area_id="45"):
+    """自动登录藏宝阁：选择服务器 → 邮箱登录 → 选择第一个角色"""
     import time as _time
-
-    # 0. 前置检查：是否已在验证码页面
-    if check_captcha(target_id):
-        print("  ⚠ 当前在验证码页面，请先在 Chrome 中手动完成验证")
-        return False
 
     # 1. 导航到登录页面（带服务器参数）
     login_url = (
@@ -145,47 +139,48 @@ def do_login(target_id, email=None, password=None, server_id="149", area_id="45"
     cdp_request(f"/navigate?target={target_id}", method="POST", body=login_url)
     _time.sleep(3)
 
-    if check_captcha(target_id):
-        print("  ⚠ 登录触发了验证码，请手动完成")
-        return False
-
+    # 检查是否已登录（可能 cookie 未过期）
     if check_login(target_id):
         print("  已登录，跳过登录流程")
         return True
 
-    # 2. 点击"邮箱登录"tab，等待 Chrome 自动填充
-    print("  选择邮箱登录（依赖 Chrome 自动填充）...")
+    # 2. 点击"邮箱登录"tab
+    print("  选择邮箱登录...")
     eval_js(target_id, 'document.getElementById("tabBtn2").click(); "done"')
-    _time.sleep(2)
+    _time.sleep(1)
 
-    # 检查 iframe 中是否已自动填充
-    email_filled = eval_frame(target_id, "dl.reg.163.com",
-        'document.querySelector(\'input[name="email"]\')?.value || ""')
-    if email_filled and len(str(email_filled)) > 3:
-        print(f"  Chrome 已自动填充邮箱: {str(email_filled)[:3]}***")
-    else:
-        print("  Chrome 未自动填充，请在 Chrome 中手动登录一次以保存密码")
-        print("  或确保已在 Chrome 密码管理器中保存 cbg 登录凭证")
-        return False
+    # 3. 在 iframe 中填写邮箱和密码
+    print("  填写账号密码...")
+    eval_frame(target_id, "dl.reg.163.com", f'''(() => {{
+        const emailEl = document.querySelector('input[name="email"]');
+        if (emailEl) {{
+            emailEl.focus();
+            emailEl.value = "{email}";
+            emailEl.dispatchEvent(new Event('input', {{bubbles: true}}));
+            emailEl.dispatchEvent(new Event('change', {{bubbles: true}}));
+        }}
+        return emailEl ? "email ok" : "no email input";
+    }})()''')
+    _time.sleep(0.3)
 
-    # 3. 检查登录按钮是否已启用（自动填充后应自动启用）
-    btn_disabled = eval_frame(target_id, "dl.reg.163.com",
-        'document.getElementById("dologin")?.classList.contains("btndisabled")')
-    if btn_disabled:
-        print("  登录按钮未启用，可能密码未填充")
-        return False
+    eval_frame(target_id, "dl.reg.163.com", f'''(() => {{
+        const pwdEl = document.querySelector('input[name="password"]');
+        if (pwdEl) {{
+            pwdEl.focus();
+            pwdEl.value = "{password}";
+            pwdEl.dispatchEvent(new Event('input', {{bubbles: true}}));
+            pwdEl.dispatchEvent(new Event('change', {{bubbles: true}}));
+        }}
+        return pwdEl ? "pwd ok" : "no pwd input";
+    }})()''')
+    _time.sleep(0.5)
 
-    # 4. 点击登录按钮（仅点击，不注入任何值）
+    # 4. 点击登录按钮
     print("  提交登录...")
-    eval_frame(target_id, "dl.reg.163.com",
-        'document.getElementById("dologin").click(); "clicked"')
+    eval_frame(target_id, "dl.reg.163.com", 'document.getElementById("dologin").click(); "clicked"')
     _time.sleep(5)
 
-    if check_captcha(target_id):
-        print("  ⚠ 登录触发了验证码，请手动完成")
-        return False
-
-    # 5. 等待角色选择页面
+    # 5. 等待角色选择页面加载，选择第一个角色
     for attempt in range(10):
         url = eval_js(target_id, "document.location.href") or ""
         if "show_role_select_page" in url:
@@ -195,12 +190,10 @@ def do_login(target_id, email=None, password=None, server_id="149", area_id="45"
             return True
         _time.sleep(2)
     else:
-        print("  警告: 角色选择页未出现，可能已直接登录")
-        if check_login(target_id):
-            return True
+        print("  警告: 角色选择页未出现")
 
-    # 6. 选择第一个角色
-    print("  选择角色...")
+    # 6. 查找第一个角色并点击
+    print("  选择第一个角色...")
     first_role_id = eval_js(target_id, '''(() => {
         const panel = document.getElementById('role_list_panel');
         if (!panel) return null;
@@ -211,27 +204,51 @@ def do_login(target_id, email=None, password=None, server_id="149", area_id="45"
     })()''')
 
     if first_role_id:
+        print(f"  选中角色 ID: {first_role_id}")
         eval_js(target_id, f'document.getElementById("icon_{first_role_id}").click(); "done"')
         _time.sleep(1)
-        nickname = eval_js(target_id,
-            'document.getElementById("select_role_nickname")?.innerText?.trim() || "?"')
-        print(f"  角色: {nickname}")
 
-    # 7. 点击"进入"
-    eval_js(target_id, '''(() => {
-        const all = document.querySelectorAll('a');
-        for (const a of all) {
-            if ((a.innerText || '').trim().replace(/\\s+/g, '') === '进入') {
-                a.click(); return 'clicked';
+        # 显示角色信息
+        nickname = eval_js(target_id, '''(() => {
+            const el = document.getElementById('select_role_nickname');
+            return el ? el.innerText.trim() : '?';
+        })()''')
+        print(f"  角色名: {nickname}")
+
+        # 7. 点击"进入"
+        eval_js(target_id, '''(() => {
+            const all = document.querySelectorAll('a');
+            for (const a of all) {
+                if ((a.innerText || '').trim().replace(/\\s+/g, '') === '进入') {
+                    a.click();
+                    return 'clicked';
+                }
             }
-        }
-    })()''')
-    _time.sleep(5)
+            return 'not found';
+        })()''')
+        _time.sleep(5)
+    else:
+        print("  警告: 未找到角色列表，尝试直接进入")
+        eval_js(target_id, '''(() => {
+            const all = document.querySelectorAll('a');
+            for (const a of all) {
+                if ((a.innerText || '').trim().replace(/\\s+/g, '') === '进入') {
+                    a.click();
+                    return 'clicked';
+                }
+            }
+            return 'not found';
+        })()''')
+        _time.sleep(5)
 
-    if check_captcha(target_id):
-        print("  ⚠ 登录后触发了验证码")
-        return False
+    # 8. 检查登录结果
+    if check_login(target_id):
+        print("  登录成功!")
+        return True
 
+    # 可能还在角色选择页或其他中间页面
+    url = eval_js(target_id, "document.location.href") or ""
+    print(f"  当前 URL: {url}")
     return check_login(target_id)
 
 
@@ -251,257 +268,122 @@ def wait_for_selector(target_id, selector, timeout=5):
     return False
 
 
-def scrape_gem_fast(target_id, gem_value, gem_name, max_level=20):
-    """快速抓取：按等级遍历，DOM 提取 + 收藏合并一趟完成"""
-    print(f"\n{'='*50}")
-    print(f"  快速抓取: {gem_name} (value={gem_value})")
-    print(f"{'='*50}")
-
-    all_data = []
-    empty_streak = 0
-    total_collected = 0
-
-    for lv in range(5, max_level + 1):
-        # 导航到按等级筛选 + 价格升序 URL
-        search_url = (
-            f"https://xyq.cbg.163.com/cgi-bin/query.py?act=search_stone"
-            f"&server_id=149&areaid=45"
-            f"&s_type={gem_value}&equip_level={lv}"
-            f"&query_order=price+ASC&page=1"
-        )
-        nav_ok = cdp_request(f"/navigate?target={target_id}", method="POST", body=search_url)
-
-        if not wait_for_selector(target_id, "#soldList tr", timeout=5):
-            empty_streak += 1
-            if empty_streak >= 3:
-                break
-            continue
-        empty_streak = 0
-
-        # 获取总页数
-        total_pages = 1
-        page_match = eval_js(target_id,
-            '''(() => { const m = document.body.innerText.match(/共(\\d+)页/); return m ? m[1] : null; })()''')
-        if page_match:
-            total_pages = int(page_match)
-
-        # 逐页提取（后续页用完整 URL）
-        level_items = []
-        for page in range(1, total_pages + 1):
-            if page > 1:
-                page_url = (
-                    f"https://xyq.cbg.163.com/cgi-bin/query.py?act=search_stone"
-                    f"&server_id=149&areaid=45"
-                    f"&s_type={gem_value}&equip_level={lv}"
-                    f"&query_order=price+ASC&page={page}"
-                )
-                cdp_request(f"/navigate?target={target_id}", method="POST", body=page_url)
-                if not wait_for_selector(target_id, "#soldList tr", timeout=3):
-                    continue
-
-            page_data_json = eval_js(target_id, f'''(() => {{
-                const rows = document.querySelectorAll("#soldList tr");
-                const items = [];
-                rows.forEach(row => {{
-                    const cells = row.querySelectorAll("td");
-                    if (cells.length < 6) return;
-                    const nameText = (cells[1]?.innerText || "").trim();
-                    if (!nameText.includes("{gem_name}")) return;
-                    const lvMatch = nameText.match(/(\\d+)级/);
-                    if (!lvMatch) return;
-                    const priceText = (cells[3]?.innerText || cells[2]?.innerText || "").trim();
-                    const priceMatch = priceText.match(/[￥¥]([\\d.]+)/);
-                    if (!priceMatch) return;
-                    const collectSpan = row.querySelector("span.equipListCollect");
-                    const orderSn = collectSpan?.getAttribute("data-game_ordersn") || "";
-                    items.push({{
-                        level: parseInt(lvMatch[1]),
-                        price: parseFloat(priceMatch[1]),
-                        order_sn: orderSn
-                    }});
-                }});
-                return JSON.stringify(items);
-            }})()''')
-
-            if page_data_json:
-                try:
-                    items = json.loads(page_data_json)
-                    level_items.extend(items)
-                except json.JSONDecodeError:
-                    pass
-
-        all_data.extend(level_items)
-
-        # 8-12 级：收藏最低价前 3 个
-        if 8 <= lv <= 12 and level_items:
-            lv_sorted = sorted(
-                [d for d in level_items if d.get("order_sn")],
-                key=lambda x: x["price"]
-            )
-            seen = set()
-            collected = 0
-            for item in lv_sorted:
-                sn = item["order_sn"]
-                if sn in seen:
-                    continue
-                seen.add(sn)
-                code = (f"fetch('/cgi-bin/userinfo.py?act=ajax_add_collect"
-                        f"&order_sn={sn}').then(r=>r.json())"
-                        f".then(j=>j.status===1?'ok':'fail')")
-                ok = eval_js(target_id, code)
-                if ok == "ok":
-                    collected += 1
-                    total_collected += 1
-                time.sleep(0.25)
-                if collected >= 3:
-                    break
-
-        pages_str = f" {total_pages}页" if total_pages > 1 else ""
-        fav_str = f" 收藏{min(3, sum(1 for d in level_items if d.get('order_sn')))}个" if 8 <= lv <= 12 else ""
-        print(f"  等级{lv}: {len(level_items)}条{pages_str}{fav_str}")
-
-        # 随机延迟模拟人类浏览节奏，避免触发频率检测
-        delay = 0.5 + (hash(f"{gem_name}{lv}") % 1500) / 1000.0
-        time.sleep(delay)
-
-    if total_collected > 0:
-        print(f"  {gem_name}: 收藏 8-12 级共 {total_collected} 个 listing")
-    print(f"  总计 {gem_name}: {len(all_data)} 条")
-    return all_data
-
-
-def run_self_check(all_results, rate_info=None):
-    """采集后自检：条数合理性、异常价格、数据污染"""
-    print(f"\n{'='*50}")
-    print(f"  数据质量自检")
-    print(f"{'='*50}")
-    issues = []
-
-    for gem_name, data in all_results:
-        if not data:
-            issues.append(f"⚠ {gem_name}: 0条数据!")
-            continue
-
-        by_level = {}
-        for d in data:
-            lv = d["level"]
-            by_level[lv] = by_level.get(lv, []) + [d["price"]]
-
-        levels = sorted(by_level.keys())
-
-        # 检查等级连续性
-        if len(levels) >= 2:
-            for i in range(len(levels) - 1):
-                if levels[i + 1] - levels[i] > 1:
-                    issues.append(f"⚠ {gem_name}: 等级不连续 {levels[i]}→{levels[i+1]}")
-
-        # 检查异常价格 (等级6不应是¥10)
-        for lv, prices in by_level.items():
-            avg_p = sum(prices) / len(prices)
-            min_p = min(prices)
-            # 6级以上宝石价格不应低于 ¥10.00
-            if lv >= 7 and min_p < 11:
-                issues.append(f"⚠ {gem_name} {lv}级: 最低价过低 ¥{min_p:.2f}")
-            # 跨宝石污染检测：红玛瑙/黑宝石/舍利子6级均价不会 <15
-            if gem_name in ("红玛瑙", "黑宝石", "舍利子") and lv >= 6 and avg_p < 15:
-                issues.append(f"⚠ {gem_name} {lv}级: 均价异常低 ¥{avg_p:.2f} (疑似数据污染)")
-
-        print(f"  {gem_name}: {len(data)}条, {len(levels)}个等级 ({levels[0]}-{levels[-1]}级)")
-
-    if rate_info:
-        print(f"  汇率: 1RMB={rate_info.get('mh_per_rmb', '?')}MH")
-
-    if issues:
-        print(f"\n  发现问题 {len(issues)} 个:")
-        for issue in issues:
-            print(f"    {issue}")
-    else:
-        print(f"  自检通过 ✓")
-
-    return len(issues) == 0
-
-
 def scrape_gem(target_id, gem_value, gem_name):
-    """抓取单个宝石的全部等级数据（一次搜索 + 翻页，约20次导航）"""
+    """抓取单个宝石的所有页面数据"""
     print(f"\n{'='*50}")
     print(f"  抓取: {gem_name} (value={gem_value})")
     print(f"{'='*50}")
 
-    # 选中宝石分类并搜索（清除等级筛选，获取全部等级）
-    code = (
-        "(() => {"
-        "  const stoneRadio = [...document.querySelectorAll('input[name=equip_kind]')]"
-        "    .find(r => r.value === 'search_stone');"
-        "  if (!stoneRadio) return 'no stone radio';"
-        "  stoneRadio.checked = true;"
-        "  stoneRadio.dispatchEvent(new Event('change', {bubbles: true}));"
-        f"  document.getElementById('s_stone_type').value = '{gem_value}';"
-        "  document.getElementById('s_stone_level').value = '';"
-        "  search_equip(1);"
-        "  return 'searching...';"
-        ")()"
-    )
-    eval_js(target_id, code)
-    if not wait_for_selector(target_id, "#soldList tr", timeout=5):
-        print("  搜索结果未加载")
+    # 选中宝石分类并搜索
+    code = f'''(() => {{
+        const stoneRadio = [...document.querySelectorAll("input[name=equip_kind]")]
+            .find(r => r.value === "search_stone");
+        if (!stoneRadio) return "no stone radio";
+        stoneRadio.checked = true;
+        stoneRadio.dispatchEvent(new Event("change", {{bubbles: true}}));
+        document.getElementById("s_stone_type").value = "{gem_value}";
+        document.getElementById("s_stone_level").value = "";
+        search_equip(1);
+        return "searching...";
+    }})()'''
+
+    result = eval_js(target_id, code)
+    if not result:
+        print("  搜索提交失败")
         return []
 
+    time.sleep(3)
+
     # 获取总页数
+    page_info = eval_js(target_id, '''(() => {
+        const text = document.body.innerText;
+        const m = text.match(/< (\\d+)\\//) || text.match(/(\\d+)\\/(\\d+)/);
+        return m ? m[0] : "?";
+    })()''')
+    print(f"  分页信息: {page_info}")
+
     total_pages = 1
-    page_match = eval_js(target_id,
-        "(() => { const m = document.body.innerText.match(/共(\\d+)页/); return m ? m[1] : null; })()")
+    page_match = eval_js(target_id, '''(() => {
+        const text = document.body.innerText;
+        const m = text.match(/共(\\d+)页/);
+        return m ? m[1] : null;
+    })()''')
     if page_match:
         total_pages = int(page_match)
 
     all_data = []
+
     for page in range(1, total_pages + 1):
-        print(f"  第 {page}/{total_pages} 页...", end=" ")
+        print(f"  抓取第 {page}/{total_pages} 页...", end=" ")
 
         if page > 1:
-            eval_js(target_id, "goto(" + str(page) + ")")
-            if not wait_for_selector(target_id, "#soldList tr", timeout=3):
-                print("超时")
-                continue
+            eval_js(target_id, f"goto({page});")
+            time.sleep(2)
 
-        # DOM 直接提取
-        js_code = (
-            "(() => {"
-            "  const rows = document.querySelectorAll('#soldList tr');"
-            "  const items = [];"
-            "  rows.forEach(row => {"
-            "    const cells = row.querySelectorAll('td');"
-            "    if (cells.length < 6) return;"
-            "    const nameText = (cells[1]?.innerText || '').trim();"
-            f"    if (!nameText.includes('{gem_name}')) return;"
-            "    const lvMatch = nameText.match(/(\\d+)级/);"
-            "    if (!lvMatch) return;"
-            "    const priceText = (cells[3]?.innerText || cells[2]?.innerText || '').trim();"
-            "    const priceMatch = priceText.match(/[￥¥]([\\d.]+)/);"
-            "    if (!priceMatch) return;"
-            "    const collectSpan = row.querySelector('span.equipListCollect');"
-            "    const orderSn = collectSpan?.getAttribute('data-game_ordersn') || '';"
-            "    items.push({"
-            "      level: parseInt(lvMatch[1]),"
-            "      price: parseFloat(priceMatch[1]),"
-            "      order_sn: orderSn"
-            "    });"
-            "  });"
-            "  return JSON.stringify(items);"
-            ")()"
-        )
-        page_data_json = eval_js(target_id, js_code)
+        # 提取数据（含 order_sn 用于收藏）
+        # 提取数据（innerText 解析 + DOM 提取 order_sn）
+        page_data_json = eval_js(target_id, '''(() => {
+            const text = document.body.innerText;
+            const lines = text.split("\\n");
+            const results = [];
+            let i = 0;
+            while (i < lines.length) {
+                if (lines[i].trim() === "''' + gem_name + '''") {
+                    const nextLine = lines[i+1] ? lines[i+1].trim() : "";
+                    const levelMatch = nextLine.match(/^(\\d+)级$/);
+                    let priceLine = lines[i+2] ? lines[i+2].trim() : "";
+                    if (!priceLine.includes("￥")) {
+                        priceLine = lines[i+3] ? lines[i+3].trim() : "";
+                    }
+                    const priceMatch = priceLine.match(/^￥([\\d.]+)$/);
+                    if (levelMatch && priceMatch) {
+                        results.push({
+                            level: parseInt(levelMatch[1]),
+                            price: parseFloat(priceMatch[1]),
+                            order_sn: ""
+                        });
+                    }
+                }
+                i++;
+            }
+            // 补充 order_sn：从 DOM 提取
+            const rows = document.querySelectorAll("#soldList tr");
+            let ri = 0;
+            rows.forEach(row => {
+                const cells = row.querySelectorAll("td");
+                if (cells.length < 6) return;
+                const nameText = (cells[1]?.innerText || "").trim();
+                if (!nameText.includes("''' + gem_name + '''")) return;
+                const lvMatch = nameText.match(/(\\d+)级/);
+                if (!lvMatch) return;
+                const lv = parseInt(lvMatch[1]);
+                const collectSpan = row.querySelector("span.equipListCollect");
+                const orderSn = collectSpan?.getAttribute("data-game_ordersn") || "";
+                if (orderSn && ri < results.length) {
+                    // 匹配 level
+                    for (let j = ri; j < results.length; j++) {
+                        if (results[j].level === lv && !results[j].order_sn) {
+                            results[j].order_sn = orderSn;
+                            break;
+                        }
+                    }
+                }
+                ri++;
+            });
+            return JSON.stringify(results);
+        })()''')
 
         if page_data_json:
             try:
-                page_data = json.loads(page_data_json)
+                page_data = json.loads(page_data_json) if isinstance(page_data_json, str) else page_data_json
                 all_data.extend(page_data)
-                print(f"{len(page_data)} 条")
+                print(f"获取 {len(page_data)} 条")
             except json.JSONDecodeError:
-                print("解析失败")
-                pass
+                print(f"JSON 解析失败: {page_data_json[:100]}")
 
     print(f"  总计 {gem_name}: {len(all_data)} 条")
     return all_data
+
 
 def scrape_money_rate(target_id):
     """抓取梦幻币最低单价，计算 RMB/MH 汇率"""
@@ -1168,39 +1050,34 @@ def main():
 
     print(f"\n使用 tab: {target_id}")
 
-    # 3. 登录状态检查（依赖 Chrome 持久化 cookie，不触发自动登录）
-    # 先检测验证码（若有则阻断）
+    # 3. 登录状态检查（依赖 Chrome 持久化 cookie 恢复登录态）
     captcha_type = check_captcha(target_id)
     if captcha_type:
-        print(f"\n⚠ 检测到安全验证页面 ({captcha_type})!")
-        print("  请在 Chrome 中手动完成验证，完成后 cookie 自动持久化，无需重复操作。")
-        return 1
-
-    # 导航到首页让 cookie 生效
-    cdp_request(f"/navigate?target={target_id}", method="POST",
-                body="https://xyq.cbg.163.com/?server_id=149&areaid=45")
-    time.sleep(2)
-
-    captcha_type = check_captcha(target_id)
-    if captcha_type:
-        print(f"\n⚠ 检测到安全验证页面 ({captcha_type})!")
-        print("  请在 Chrome 中手动完成验证后重试。")
+        print(f"\n⚠ 检测到安全验证页面 ({captcha_type})! 请在 Chrome 中手动完成验证后重试。")
         return 1
 
     if not check_login(target_id):
-        # 再试一次：导航到搜索页
-        cdp_request(f"/navigate?target={target_id}", method="POST", body=SEARCH_URL)
-        time.sleep(3)
+        # 导航首页让 cookie 生效
+        cdp_request(f"/navigate?target={target_id}", method="POST",
+                    body="https://xyq.cbg.163.com/?server_id=149&areaid=45")
+        time.sleep(2)
         captcha_type = check_captcha(target_id)
         if captcha_type:
-            print(f"\n⚠ 检测到安全验证页面 ({captcha_type})!")
-            print("  请在 Chrome 中手动完成验证后重试。")
+            print(f"\n⚠ 检测到安全验证页面 ({captcha_type})! 请在 Chrome 中手动完成验证后重试。")
             return 1
         if not check_login(target_id):
-            print("\n未登录! 请在 Chrome 中手动登录一次 (cookie 持久化后无需重复):")
-            print("  1. 打开 https://xyq.cbg.163.com")
-            print("  2. 追忆 → 再续前缘 → 邮箱登录 → 选角色 902丨享受")
-            return 1
+            # 再试搜索页
+            cdp_request(f"/navigate?target={target_id}", method="POST", body=SEARCH_URL)
+            time.sleep(3)
+            captcha_type = check_captcha(target_id)
+            if captcha_type:
+                print(f"\n⚠ 检测到安全验证页面 ({captcha_type})! 请在 Chrome 中手动完成验证后重试。")
+                return 1
+            if not check_login(target_id):
+                print("\n未登录! 请在 Chrome 中手动登录 (cookie 持久化后无需重复):")
+                print("  1. 打开 https://xyq.cbg.163.com")
+                print("  2. 追忆 → 再续前缘 → 邮箱登录 → 选角色 902丨享受")
+                return 1
 
     print("登录状态: 已登录 ✓")
 
@@ -1210,7 +1087,7 @@ def main():
         print("导航到道具搜索页面...")
         cdp_request(f"/navigate?target={target_id}", method="POST",
                     body=SEARCH_URL)
-        wait_for_selector(target_id, "#soldList tr,#search_box,.qFilter", timeout=5)
+        time.sleep(3)
 
     # 4.5 检查收藏列表中的成交
     transactions = check_transactions(target_id, today)
@@ -1228,30 +1105,22 @@ def main():
     # 回到道具搜索页面
     cdp_request(f"/navigate?target={target_id}", method="POST",
                 body=SEARCH_URL)
-    wait_for_selector(target_id, "#soldList tr,#search_box,.qFilter", timeout=5)
+    time.sleep(5)  # 等待页面完全加载
 
-    # 5. 逐个抓取宝石数据（一次搜索拉全部等级 + 翻页，减少导航次数防触发验证码）
+    # 5. 逐个抓取宝石数据
     all_results = []
     for gem_value, gem_name in GEMS:
-        if check_captcha(target_id):
-            print(f"\n⚠ 检测到验证码，中断抓取!")
-            break
         try:
             data = scrape_gem(target_id, gem_value, gem_name)
             all_results.append((gem_name, data))
-            # 收藏 8-12 级最低价前3
+            # 5.5 收藏 8-12 级最低价前3
             favorite_top3(target_id, gem_value, gem_name)
         except Exception as e:
             print(f"  抓取 {gem_name} 失败: {e}")
             all_results.append((gem_name, []))
-        time.sleep(1.5)
 
     # 6. 抓取梦幻币汇率
     rate_info = scrape_money_rate(target_id)
-
-    # 6.5 数据自检
-    if not run_self_check(all_results, rate_info):
-        print("\n  ⚠ 自检未通过，请核查数据后重试")
 
     # 7. 保存宝石数据并计算建议收购价
     save_csv_path = os.path.join(OUTPUT_DIR, f"gem_prices_{today}.csv")
