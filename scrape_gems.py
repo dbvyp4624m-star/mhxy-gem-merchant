@@ -569,6 +569,7 @@ def build_suggested_buy_history():
         suggested = compute_suggested_buy(data, rate_info, verbose=False)
         for name in gem_names:
             gem_series[name].append(suggested.get(name, {}).get("l1_mh", 0))
+        dates.append(date_str)
 
     return {"dates": dates, "gems": dict(gem_series)}
 
